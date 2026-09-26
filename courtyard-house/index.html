@@ -64,7 +64,7 @@
     .tools { display: flex; gap: 8px; }
 
     #scrub { position: relative; padding-top: 2px; }
-    #stages { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 -6px 6px; }
+    #stages { display: grid; grid-template-columns: repeat(5, 1fr); margin: 0 -6px 6px; }
     #stages button {
       appearance: none; border: 0; background: none; cursor: pointer; font: inherit; color: var(--muted);
       font-size: 12.5px; font-weight: 600; padding: 4px 6px; text-align: center; border-radius: 8px;
@@ -72,6 +72,7 @@
     }
     #stages button:first-child { text-align: left; }
     #stages button:last-child { text-align: right; }
+    #stages button:first-child, #stages button:last-child { padding-left: 6px; padding-right: 6px; }
     #stages button span { font-variant-numeric: tabular-nums; opacity: .6; margin-right: 4px; }
     #stages button.active { color: var(--ink); }
     #stages button:hover { color: var(--ink); }
@@ -144,7 +145,7 @@
   <aside id="hint" class="panel">
     <div><b>Drag</b> pan · <b>Right-drag</b> rotate</div>
     <div><b>Scroll</b> zoom · <b>Arrows</b> move</div>
-    <div><b>1–4</b> stages · <b>Space</b> play · <b>B</b> basemap</div>
+    <div><b>1–5</b> stages · <b>Space</b> play · <b>B</b> basemap</div>
   </aside>
 
   <div id="navTools" aria-label="Map navigation">
@@ -165,14 +166,16 @@
         <button data-stage="1"><span>02</span>Massing</button>
         <button data-stage="2"><span>03</span>Detail</button>
         <button data-stage="3"><span>04</span>Finish</button>
+        <button data-stage="4"><span>05</span>Context</button>
       </div>
       <div id="rangeWrap">
         <div id="track"><div id="fill"></div></div>
         <div class="tick" style="left:0%"></div>
-        <div class="tick" style="left:33.333%"></div>
-        <div class="tick" style="left:66.667%"></div>
+        <div class="tick" style="left:25%"></div>
+        <div class="tick" style="left:50%"></div>
+        <div class="tick" style="left:75%"></div>
         <div class="tick" style="left:100%"></div>
-        <input id="range" type="range" min="0" max="3000" step="1" value="0" aria-label="Design stage" />
+        <input id="range" type="range" min="0" max="4000" step="1" value="0" aria-label="Design stage" />
         <div id="thumb"></div>
       </div>
     </div>
@@ -201,7 +204,7 @@
     const [
       Map, SceneView, Graphic, GraphicsLayer, Mesh, MeshComponent, MeshMaterialMetallicRoughness,
       MeshTexture, MeshLocalVertexSpace, MeshTransform, Point, Multipoint, Polyline, Polygon, SpatialReference, Camera,
-      Basemap, LocalBasemapsSource
+      Basemap, LocalBasemapsSource, WebStyleSymbol, IntegratedMesh3DTilesLayer, SceneModification, SceneModifications
     ] = await $arcgis.import([
       "@arcgis/core/Map.js",
       "@arcgis/core/views/SceneView.js",
@@ -220,8 +223,16 @@
       "@arcgis/core/geometry/SpatialReference.js",
       "@arcgis/core/Camera.js",
       "@arcgis/core/Basemap.js",
-      "@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource.js"
+      "@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource.js",
+      "@arcgis/core/symbols/WebStyleSymbol.js",
+      "@arcgis/core/layers/IntegratedMesh3DTilesLayer.js",
+      "@arcgis/core/layers/support/SceneModification.js",
+      "@arcgis/core/layers/support/SceneModifications.js"
     ]);
+
+    // Google Map Tiles API key for the Photorealistic 3D Tiles in stage 05.
+    // Restrict it in Google Cloud Console to this site's HTTP referrer and the Map Tiles API.
+    const GOOGLE_MAPS_KEY = "AIzaSyAkpf_G6xxV2vi6Y7po1ZA5MT1mXqRHifQ";
 
     // ------------------------------------------------------------------
     // Site setup. All geometry is authored in metres in a local frame
@@ -849,10 +860,11 @@
     const L_archFin = layer("arch-finished");
     const L_furnFin = layer("furniture-finished");
     const L_treesFin = layer("trees-finished");
+    const L_treesReal = layer("trees-realistic");
     const L_water = layer("water");
     const L_glassFin = layer("glass-finished");
     const L_lights = layer("lights");
-    const ALL = [L_site, L_paths, L_construct, L_plinthWhite, L_mass, L_massEdges, L_archWhite, L_furnWhite, L_treesWhite, L_archFin, L_furnFin, L_treesFin, L_water, L_lights, L_glassWhite, L_glassFin, L_sketch];
+    const ALL = [L_site, L_paths, L_construct, L_plinthWhite, L_mass, L_massEdges, L_archWhite, L_furnWhite, L_treesWhite, L_archFin, L_furnFin, L_treesFin, L_treesReal, L_water, L_lights, L_glassWhite, L_glassFin, L_sketch];
 
     const meshSym = (edges) => ({ type: "mesh-3d", symbolLayers: [{ type: "fill", ...(edges ? { edges } : {}) }] });
     const modelEdges = { type: "solid", color: [60, 64, 72, 0.35], size: 0.6 };
@@ -977,11 +989,116 @@
     view.on(["drag", "mouse-wheel", "double-click", "key-down", "hold"], stopAuto);
 
     // ------------------------------------------------------------------
+    // Realistic trees (EsriRealisticTreesStyle from the ArcGIS Online
+    // vegetation library) for the finish and context stages. Each tree type
+    // lists preferred species first with fallbacks; if the style cannot be
+    // reached the low-poly trees stay in place.
+    // ------------------------------------------------------------------
+    const realTrees = { ready: false };
+    const TREE_SPECIES = {
+      round: [["Quercus", "Acer", "Other"], ["Fagus", "Acer", "Other"], ["Acer", "Other"], ["Tilia", "Acer", "Other"]],
+      cypress: [["Cupressus", "Juniperus", "Pinus"]],
+      courtyard: [["Betula", "Cornus", "Acer"]]
+    };
+    const TREE_HEIGHT = { round: 11, cypress: 9.5, courtyard: 6.5 };
+    const symbolCache = {};
+    async function treeSymbol(candidates) {
+      const key = candidates.join("|");
+      if (!(key in symbolCache)) {
+        symbolCache[key] = (async () => {
+          for (const name of candidates) {
+            try {
+              return await withTimeout(new WebStyleSymbol({ styleName: "EsriRealisticTreesStyle", name }).fetchSymbol(), 15000);
+            } catch { /* try the next species */ }
+          }
+          return null;
+        })();
+      }
+      return symbolCache[key];
+    }
+    async function loadRealisticTrees() {
+      const r = rng(77);
+      const graphics = [];
+      for (let i = 0; i < TREES.length; i++) {
+        const [x, y, z, type, sc] = TREES[i];
+        const options = TREE_SPECIES[type];
+        const base = await treeSymbol(options[i % options.length]);
+        if (!base) return;                              // style unavailable: keep the low-poly trees
+        const symbol = base.clone();
+        const obj = symbol.symbolLayers.getItemAt(0);
+        obj.width = undefined; obj.depth = undefined;   // scale proportionally from height
+        obj.height = TREE_HEIGHT[type] * sc * (0.9 + r() * 0.2);
+        obj.heading = r() * 360;
+        const [px, py, pz] = P(x, y, type === "courtyard" ? z : z + 0.1);
+        graphics.push(new Graphic({ geometry: new Point({ x: px, y: py, z: pz, spatialReference: SR }), symbol }));
+      }
+      L_treesReal.addMany(graphics);
+      realTrees.ready = true;
+      L_treesReal._o = L_treesFin._o = undefined;       // let applyStage re-evaluate both layers
+    }
+
+    // ------------------------------------------------------------------
+    // Google Photorealistic 3D Tiles (stage 05). The mesh is clipped over the
+    // site so the new house and landscape replace whatever is there today, and
+    // its height is calibrated against the Esri terrain the house sits on.
+    // ------------------------------------------------------------------
+    const google = { layer: null, calibrated: false, tries: 0 };
+    function addGoogleTiles() {
+      const siteRing = lawnRing.map(([x, y]) => [x, y, baseZ]);
+      google.layer = new IntegratedMesh3DTilesLayer({
+        title: "Google Photorealistic 3D Tiles",
+        url: "https://tile.googleapis.com/v1/3dtiles/root.json",
+        customParameters: { key: GOOGLE_MAPS_KEY },
+        opacity: 0,
+        visible: false,
+        elevationInfo: { mode: "absolute-height", offset: 0 },
+        modifications: new SceneModifications([
+          new SceneModification({ type: "clip", geometry: new Polygon({ rings: [siteRing], hasZ: true, spatialReference: SR }) })
+        ])
+      });
+      map.add(google.layer, 0);
+      google.layer.load().catch(err => console.warn("Google 3D Tiles could not be loaded", err));
+      calibrateGoogleSoon();
+    }
+    // Measure the mesh height just outside the site and shift the layer so its
+    // ground meets the Esri terrain (the two can differ by the geoid height).
+    function calibrateGoogleSoon() {
+      setTimeout(async () => {
+        if (!google.layer || google.calibrated || google.tries++ > 20) return;
+        try {
+          if (google.layer.visible) {
+            const lv = await view.whenLayerView(google.layer);
+            if (!lv.updating && !view.updating) {
+              const diffs = [];
+              for (const [x, y] of [[0, -38], [38, 0], [0, 34], [-38, 0], [26, -30], [-26, -30]]) {
+                const [mx, my] = P(x, y);
+                const sp = view.toScreen(new Point({ x: mx, y: my, z: baseZ + gz(x, y), spatialReference: SR }));
+                if (!sp || sp.x < 0 || sp.y < 0 || sp.x > view.width || sp.y > view.height) continue;
+                const hit = view.toMap(sp, { include: [google.layer] });
+                if (!hit || !Number.isFinite(hit.z)) continue;
+                const [hx, hy] = toLocal(hit);
+                diffs.push(terrainAt(hx, hy) - hit.z);
+              }
+              if (diffs.length >= 2) {
+                diffs.sort((a, b) => a - b);
+                const d = diffs[Math.floor(diffs.length / 2)];
+                google.layer.elevationInfo = { mode: "absolute-height", offset: (google.layer.elevationInfo?.offset ?? 0) + d };
+                google.calibrated = Math.abs(d) < 0.5;       // re-check once after a large correction
+              }
+            }
+          }
+        } catch (err) { console.warn("Google 3D Tiles calibration skipped", err); }
+        calibrateGoogleSoon();
+      }, 1500);
+    }
+
+    // ------------------------------------------------------------------
     // Stage morph
     // ------------------------------------------------------------------
     function sunDate(t) {
       // 21 September on site: early afternoon for the model stages, sinking to a low golden sun (≈18:50 BST) for the finish.
-      const minutes = lerp(13 * 60 + 20, 17 * 60 + 50, smooth(2.0, 3.0, t));
+      // …and back to mid-afternoon for the context stage, to match the daylight in the photorealistic tiles.
+      const minutes = lerp(lerp(13 * 60 + 20, 17 * 60 + 50, smooth(2.0, 3.0, t)), 14 * 60 + 30, smooth(3.0, 4.0, t));
       return new Date(Date.UTC(2025, 8, 21, 0, Math.round(minutes)));
     }
     // Layers with edge rendering stay "visible" and are hidden through opacity only: toggling
@@ -1002,9 +1119,9 @@
     };
     massGraphic.baseMesh = massMesh; furnWhiteGraphic.baseMesh = furnWhiteMesh;
 
-    const BG = [[245, 242, 235], [236, 238, 240], [233, 235, 237], [62, 70, 102]];
-    const GROUND = [[245, 242, 235], [226, 226, 222], [222, 223, 220], [76, 96, 58]];
-    const colorAt = (stops, t) => { const i = Math.min(2, Math.floor(t)); return lerpColor(stops[i], stops[i + 1], smooth(0, 1, t - i)); };
+    const BG = [[245, 242, 235], [236, 238, 240], [233, 235, 237], [62, 70, 102], [172, 198, 226]];
+    const GROUND = [[245, 242, 235], [226, 226, 222], [222, 223, 220], [76, 96, 58], [76, 96, 58]];
+    const colorAt = (stops, t) => { const i = Math.min(stops.length - 2, Math.floor(t)); return lerpColor(stops[i], stops[i + 1], smooth(0, 1, t - i)); };
 
     let lastApplied = { bg: "", ground: "", minutes: -1 };
     function applyStage(t) {
@@ -1023,9 +1140,13 @@
       setOpacity(L_furnFin, smooth(2.3, 2.8, t));
       setOpacity(L_site, smooth(2.2, 2.8, t));
       setOpacity(L_paths, smooth(2.3, 2.85, t));
-      setOpacity(L_treesFin, smooth(2.3, 2.8, t));
+      setOpacity(L_treesFin, realTrees.ready ? 0 : smooth(2.3, 2.8, t));
+      setOpacity(L_treesReal, realTrees.ready ? smooth(2.3, 2.8, t) : 0);
       setOpacity(L_water, 0.72 * smooth(2.4, 2.85, t)); // let the lit pool lining glow through
-      setOpacity(L_lights, smooth(2.55, 3.0, t));
+      setOpacity(L_lights, smooth(2.55, 3.0, t) * (1 - 0.85 * smooth(3.1, 3.7, t)));
+      // stage 05: Google Photorealistic 3D Tiles around the site (added on first use so no tiles are requested before)
+      if (t > 3.02 && !google.layer) addGoogleTiles();
+      if (google.layer) setOpacity(google.layer, smooth(3.1, 3.75, t));
 
       // massing rises out of the plinth
       const rise = Math.round((0.04 + 0.96 * smooth(0.12, 0.95, t)) * 200) / 200;
@@ -1060,11 +1181,13 @@
     // ------------------------------------------------------------------
     // UI
     // ------------------------------------------------------------------
+    const LAST = 4;   // index of the final stage (five stages: 0–4)
     const STAGES = [
       ["Sketch", "Loose pencil linework sets out the parti: a raised plinth, three wings wrapped around a courtyard pool, and one cantilevered volume above."],
       ["Massing", "Solid white volumes rise from the plinth to test proportion, shadow and the carved-out void of the courtyard."],
       ["Detail", "Glazing, mullions, interior walls and furniture arrive, resolving how each room opens to the courtyard."],
-      ["Finish", "Limestone, charred timber, teak and water, landscaped and lit under a low evening sun."]
+      ["Finish", "Limestone, charred timber, teak and water, landscaped and lit under a low evening sun."],
+      ["Context", "The finished house set into its real surroundings with Google Photorealistic 3D Tiles, back in afternoon light."]
     ];
     const $ = (id) => document.getElementById(id);
     const range = $("range"), thumb = $("thumb"), fill = $("fill"), ticks = [...document.querySelectorAll(".tick")];
@@ -1072,11 +1195,11 @@
     let current = 0, target = 0, shownStage = -1;
 
     function updateUI(t) {
-      const pct = (t / 3) * 100;
+      const pct = (t / LAST) * 100;
       thumb.style.left = pct + "%"; fill.style.width = pct + "%";
       if (document.activeElement !== range || !scrubbing) range.value = Math.round(t * 1000);
       ticks.forEach((el, i) => el.classList.toggle("on", t >= i - 0.02));
-      const s = Math.min(3, Math.max(0, Math.round(t)));
+      const s = Math.min(LAST, Math.max(0, Math.round(t)));
       if (s !== shownStage) {
         shownStage = s;
         stageBtns.forEach((b, i) => { b.classList.toggle("active", i === s); b.setAttribute("aria-selected", i === s); });
@@ -1102,7 +1225,7 @@
     function setPlay(on) {
       playing = on; playBtn.setAttribute("aria-pressed", on); playBtn.setAttribute("aria-label", on ? "Pause" : "Play");
       $("playIcon").innerHTML = on ? PAUSE_ICON : PLAY_ICON;
-      if (on) { if (current > 2.98) { target = 0; current = 0; } holdUntil = performance.now() + 400; }
+      if (on) { if (current > LAST - 0.02) { target = 0; current = 0; } holdUntil = performance.now() + 400; }
     }
     function stopPlay() { if (playing) setPlay(false); }
     playBtn.addEventListener("click", () => setPlay(!playing));
@@ -1131,9 +1254,9 @@
     window.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT" && e.key.startsWith("Arrow")) return;
       if (basemapPanel.contains(e.target)) return;
-      if (/^[1-4]$/.test(e.key)) { stopPlay(); target = +e.key - 1; }
+      if (/^[1-5]$/.test(e.key)) { stopPlay(); target = +e.key - 1; }
       else if (e.key === " ") { e.preventDefault(); setPlay(!playing); }
-      else if (e.key === "]") { stopPlay(); target = Math.min(3, Math.floor(target + 1.001)); }
+      else if (e.key === "]") { stopPlay(); target = Math.min(LAST, Math.floor(target + 1.001)); }
       else if (e.key === "[") { stopPlay(); target = Math.max(0, Math.ceil(target - 1.001)); }
       else if (e.key === "o") toggleAutoOrbit();
       else if (e.key === "b") toggleBasemapPanel();
@@ -1148,9 +1271,9 @@
       const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
 
       if (playing && now > holdUntil) {
-        const next = Math.min(3, Math.floor(target + 1e-6) + 1);
+        const next = Math.min(LAST, Math.floor(target + 1e-6) + 1);
         if (Math.abs(current - target) < 0.004) {
-          if (target >= 3) { target = 0; holdUntil = now + 900; }
+          if (target >= LAST) { target = 0; holdUntil = now + 900; }
           else { target = next; holdUntil = now + 3200; }
         }
       }
@@ -1185,6 +1308,7 @@
       ]);
       $("loader").classList.add("gone");
       drawStart = performance.now();
+      loadRealisticTrees().catch(err => console.warn("Realistic trees unavailable", err));
       flyTo(HOME, 3200);
       requestAnimationFrame(frame);
     } catch (err) {
