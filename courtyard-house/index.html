@@ -143,7 +143,7 @@
     <h1>From sketch to home</h1>
     <div class="stage-row"><div id="stageNum">01</div><div id="stageName">Sketch</div></div>
     <p id="stageDesc"></p>
-    <div id="contextLoading" class="loading-note" hidden>Loading 3D context…</div>
+    <div id="contextLoading" class="loading-note" hidden>Loading Google 3D tiles…</div>
     <div class="coords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>54.6584° N, 5.9726° W</div>
   </section>
 
@@ -209,7 +209,7 @@
   <section id="weatherPanel" class="panel" hidden aria-label="Weather">
     <div class="title">Weather</div>
     <arcgis-weather id="weather"></arcgis-weather>
-    <div class="note">Rain, snow, fog and clouds use the live sky; sunny weather returns to the stage colours. Weather is available close to the ground.</div>
+    <div class="note">Weather is shown when the camera is close to the ground.</div>
   </section>
 
   <div id="loader"><div style="text-align:center"><div id="loaderText">Loading scene</div><div class="bar"></div></div></div>
@@ -961,9 +961,8 @@
       popupEnabled: false,
       ui: { components: [] },
       environment: {
-        atmosphereEnabled: false,
+        atmosphereEnabled: true,
         starsEnabled: false,
-        background: { type: "color", color: [245, 242, 235] },
         lighting: { type: "sun", date: sunDate(0), directShadowsEnabled: true, displayUTCOffset: 1, glow: { intensity: 0.35 } }
       }
     });
@@ -1052,66 +1051,114 @@
     }
 
     // ------------------------------------------------------------------
-    // Google Photorealistic 3D Tiles (stage 05). The mesh is clipped over the
-    // site so the new house and landscape replace whatever is there today, and
-    // its height is calibrated against the Esri terrain the house sits on.
+    // Google Photorealistic 3D Tiles as a basemap (Basemap.groundLayers, 5.x).
+    // It is listed in the basemap gallery and selected automatically for
+    // stage 05. The mesh replaces the terrain, so the plot is flattened with a
+    // "replace" modification and the house is lifted onto Google's ground;
+    // both heights are measured on screen once the tiles have loaded, so the
+    // fit holds whatever vertical datum the tiles use.
     // ------------------------------------------------------------------
-    const google = { layer: null, calibrated: false, tries: 0 };
-    // Lazy background preload: once the intro has settled and the browser is idle, create the
-    // layer (hidden) and load its root tileset, so stage 05 only has to stream the mesh itself.
-    function preloadGoogleTiles() {
-      const start = () => { if (!google.layer) addGoogleTiles(); };
-      const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
-      setTimeout(() => idle(start, { timeout: 5000 }), 9000);
+    const googleThumb = canvasTex(200, (ctx, n) => {
+      const g = ctx.createLinearGradient(0, 0, 0, n); g.addColorStop(0, "#9fb8cf"); g.addColorStop(1, "#58684a");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, n, n);
+      const r = rng(5);
+      for (let i = 0; i < 26; i++) { const w = 12 + r() * 26, h = 20 + r() * 70, x = r() * n, y = n - h - r() * 30; ctx.fillStyle = `rgba(${200 + r() * 40},${196 + r() * 40},${186 + r() * 40},.95)`; ctx.fillRect(x, y, w, h); ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(x + w * 0.6, y, w * 0.4, h); }
+      ctx.fillStyle = "#fff"; ctx.font = "600 34px Inter, system-ui, sans-serif"; ctx.fillText("3D", 14, 44);
+    }).toDataURL("image/png");
+    const siteRingAt = (z) => new Polygon({ rings: [lawnRing.map(([x, y]) => [x, y, z])], hasZ: true, spatialReference: SR });
+    const googleMesh = new IntegratedMesh3DTilesLayer({
+      title: "Google Photorealistic 3D Tiles",
+      url: "https://tile.googleapis.com/v1/3dtiles/root.json",
+      customParameters: { key: GOOGLE_MAPS_KEY }
+    });
+    const flatten = new SceneModification({ type: "replace", geometry: siteRingAt(baseZ) });
+    googleMesh.modifications = new SceneModifications([flatten]);
+    const googleBasemap = new Basemap({ id: "google-3d", title: "Google Photorealistic 3D", thumbnailUrl: googleThumb, groundLayers: [googleMesh] });
+    const isGoogle = () => map.basemap?.id === "google-3d";
+
+    const google = { houseDz: 0, fitted: false, step: 0, prevBasemap: null, auto: false, busy: false };
+    // Shift every absolutely placed layer of the house by dz (draped layers follow the ground by themselves).
+    function setHouseOffset(dz) {
+      if (google.houseDz === dz) return;
+      google.houseDz = dz;
+      for (const l of ALL) if (l.elevationInfo?.mode === "absolute-height") l.elevationInfo = { mode: "absolute-height", offset: dz };
     }
-    function addGoogleTiles() {
-      const siteRing = lawnRing.map(([x, y]) => [x, y, baseZ]);
-      google.layer = new IntegratedMesh3DTilesLayer({
-        title: "Google Photorealistic 3D Tiles",
-        url: "https://tile.googleapis.com/v1/3dtiles/root.json",
-        customParameters: { key: GOOGLE_MAPS_KEY },
-        opacity: 0,
-        visible: false,
-        elevationInfo: { mode: "absolute-height", offset: 0 },
-        modifications: new SceneModifications([
-          new SceneModification({ type: "clip", geometry: new Polygon({ rings: [siteRing], hasZ: true, spatialReference: SR }) })
-        ])
-      });
-      map.add(google.layer, 0);
-      google.layer.load().catch(err => console.warn("Google 3D Tiles could not be loaded", err));
-      calibrateGoogleSoon();
+    // Median height difference between the rendered ground and a target height at local points on screen.
+    function groundDiff(points, targetAt) {
+      const diffs = [];
+      for (const [x, y] of points) {
+        const [mx, my] = P(x, y);
+        const sp = view.toScreen(new Point({ x: mx, y: my, z: terrainAt(x, y) + google.houseDz, spatialReference: SR }));
+        if (!sp || sp.x < 0 || sp.y < 0 || sp.x > view.width || sp.y > view.height) continue;
+        const hit = view.toMap(sp, { exclude: ALL });
+        if (!hit || !Number.isFinite(hit.z)) continue;
+        const [hx, hy] = toLocal(hit);
+        diffs.push(hit.z - targetAt(hx, hy));
+      }
+      if (diffs.length < 2) return null;
+      diffs.sort((p, q) => p - q);
+      return diffs[Math.floor(diffs.length / 2)];
     }
-    // Measure the mesh height just outside the site and shift the layer so its
-    // ground meets the Esri terrain (the two can differ by the geoid height).
-    function calibrateGoogleSoon() {
-      setTimeout(async () => {
-        if (!google.layer || google.calibrated || google.tries > 40) return;
-        try {
-          if (google.layer.visible) {
-            google.tries++;                                   // only attempts while shown count
-            const lv = await view.whenLayerView(google.layer);
-            if (!lv.updating && !view.updating) {
-              const diffs = [];
-              for (const [x, y] of [[0, -38], [38, 0], [0, 34], [-38, 0], [26, -30], [-26, -30]]) {
-                const [mx, my] = P(x, y);
-                const sp = view.toScreen(new Point({ x: mx, y: my, z: baseZ + gz(x, y), spatialReference: SR }));
-                if (!sp || sp.x < 0 || sp.y < 0 || sp.x > view.width || sp.y > view.height) continue;
-                const hit = view.toMap(sp, { include: [google.layer] });
-                if (!hit || !Number.isFinite(hit.z)) continue;
-                const [hx, hy] = toLocal(hit);
-                diffs.push(terrainAt(hx, hy) - hit.z);
-              }
-              if (diffs.length >= 2) {
-                diffs.sort((a, b) => a - b);
-                const d = diffs[Math.floor(diffs.length / 2)];
-                google.layer.elevationInfo = { mode: "absolute-height", offset: (google.layer.elevationInfo?.offset ?? 0) + d };
-                google.calibrated = Math.abs(d) < 0.5;       // re-check once after a large correction
-              }
-            }
+    const OUTSIDE = [[0, -38], [38, 0], [0, 35], [-38, 0], [28, -30], [-28, -30], [28, 28], [-28, 28]];
+    const INSIDE = [[-24, 2], [22, 4], [-12, -22], [2, 18], [-20, -14]];
+    // Step 1 lifts the house onto Google's ground; later steps check the flattened plot and correct it.
+    async function fitToGoogle() {
+      if (google.busy || google.fitted || !isGoogle() || view.updating || googleMesh.loadStatus === "failed") return;
+      google.busy = true;
+      try {
+        if (google.step === 0) {
+          const d = groundDiff(OUTSIDE, terrainAt);                    // Google ground vs Esri terrain around the plot
+          if (d != null) {
+            setHouseOffset(Math.round(d * 100) / 100);
+            flatten.geometry = siteRingAt(baseZ + google.houseDz - 0.05);
+            google.step = 1;
           }
-        } catch (err) { console.warn("Google 3D Tiles calibration skipped", err); }
-        calibrateGoogleSoon();
-      }, 1500);
+        } else {
+          const want = baseZ + google.houseDz - 0.05;
+          const e = groundDiff(INSIDE, () => want);                   // flattened plot vs where the lawn should be
+          if (e != null) {
+            if (Math.abs(e) > 0.15) flatten.geometry = siteRingAt(flatten.geometry.rings[0][0][2] - e);
+            else google.fitted = true;
+            if (++google.step > 6) google.fitted = true;
+          }
+        }
+      } catch (err) { console.warn("Google 3D Tiles fit skipped", err); }
+      google.busy = false;
+    }
+    setInterval(() => {
+      if (isGoogle() && googleMesh.loadStatus === "failed") {        // e.g. key rejected or offline: fall back
+        console.warn("Google 3D Tiles unavailable; switching back to the previous basemap.", googleMesh.loadError);
+        map.basemap = google.prevBasemap && google.prevBasemap.id !== "google-3d" ? google.prevBasemap : Basemap.fromId("satellite");
+        google.auto = false;
+      } else if (isGoogle()) fitToGoogle();
+      else if (google.houseDz !== 0) { setHouseOffset(0); google.fitted = false; google.step = 0; }
+    }, 1500);
+
+    // Stage 05 camera: this high above the site, looking at the house. Set `scale` (e.g. 25000)
+    // instead of relying on `tilt` to frame by map scale; the tilt is then derived from height and scale.
+    const CONTEXT_VIEW = { height: 500, tilt: 55, scale: null, heading: 36 };
+    function contextCamera() {
+      let dist, tilt = CONTEXT_VIEW.tilt;
+      if (CONTEXT_VIEW.scale) {
+        const now = orbitFromView();
+        const k = view.scale / Math.max(1, now.dist);                  // map scale per metre of viewing distance
+        dist = Math.max(CONTEXT_VIEW.height, CONTEXT_VIEW.scale / k);
+        tilt = Math.acos(Math.min(1, CONTEXT_VIEW.height / dist)) * 180 / Math.PI;
+      } else {
+        dist = CONTEXT_VIEW.height / Math.cos(tilt * Math.PI / 180);
+      }
+      return { target: [0, 0, PIVOT_Z + google.houseDz], heading: CONTEXT_VIEW.heading, tilt, dist };
+    }
+    function enterContext() {
+      if (!isGoogle()) { google.prevBasemap = map.basemap; map.basemap = googleBasemap; google.auto = true; }
+      toggleAutoOrbit(false);
+      flyTo(contextCamera(), 6000);
+    }
+    function leaveContext() {
+      if (google.auto && isGoogle() && google.prevBasemap) map.basemap = google.prevBasemap;
+      google.auto = false;
+      toggleAutoOrbit(false);
+      flyTo(HOME, 5000);
     }
 
     // ------------------------------------------------------------------
@@ -1141,7 +1188,6 @@
     };
     massGraphic.baseMesh = massMesh; furnWhiteGraphic.baseMesh = furnWhiteMesh;
 
-    const BG = [[245, 242, 235], [236, 238, 240], [233, 235, 237], [62, 70, 102], [62, 70, 102]];
     const GROUND = [[245, 242, 235], [226, 226, 222], [222, 223, 220], [76, 96, 58], [76, 96, 58]];
     const colorAt = (stops, t) => { const i = Math.min(stops.length - 2, Math.floor(t)); return lerpColor(stops[i], stops[i + 1], smooth(0, 1, t - i)); };
 
@@ -1166,14 +1212,6 @@
       setOpacity(L_treesReal, realTrees.ready ? smooth(2.3, 2.8, t) : 0);
       setOpacity(L_water, 0.72 * smooth(2.4, 2.85, t)); // let the lit pool lining glow through
       setOpacity(L_lights, smooth(2.55, 3.0, t));
-      // stage 05: Google Photorealistic 3D Tiles around the site (added on first use so no tiles are requested before)
-      if (t > 3.02 && !google.layer) addGoogleTiles();     // reached stage 05 before the background preload
-      if (google.layer) {                                 // hidden (no mesh requested or drawn) until stage 05
-        const on = t > 3.05;
-        if (google.layer.visible !== on) google.layer.visible = on;
-        const go = Math.round(smooth(3.1, 3.75, t) * 500) / 500;
-        if (google.layer._o !== go) { google.layer._o = go; google.layer.opacity = go; }
-      }
 
       // massing rises out of the plinth
       const rise = Math.round((0.04 + 0.96 * smooth(0.12, 0.95, t)) * 200) / 200;
@@ -1198,15 +1236,7 @@
         Object.assign(lastApplied, { bm, bmn: nLayers, bmo });
       }
 
-      const bg = colorAt(BG, t), gr = colorAt(GROUND, t);
-      // Weather other than "sunny" needs the SDK's own sky (atmosphere) to show clouds, rain, snow or fog.
-      const weatherSky = (view.environment.weather?.type ?? "sunny") !== "sunny";
-      if (weatherSky !== lastApplied.sky) {
-        lastApplied.sky = weatherSky; lastApplied.bg = "";
-        view.environment.atmosphereEnabled = weatherSky;
-        if (weatherSky) view.environment.background = null;
-      }
-      if (!weatherSky && bg.join() !== lastApplied.bg) { view.environment.background = { type: "color", color: bg }; lastApplied.bg = bg.join(); document.body.style.background = `rgb(${bg})`; }
+      const gr = colorAt(GROUND, t);
       if (gr.join() !== lastApplied.ground) { map.ground.surfaceColor = gr; lastApplied.ground = gr.join(); }
       const d = sunDate(t);
       if (d.getTime() !== lastApplied.minutes) { view.environment.lighting.date = d; lastApplied.minutes = d.getTime(); }
@@ -1235,7 +1265,10 @@
       ticks.forEach((el, i) => el.classList.toggle("on", t >= i - 0.02));
       const s = Math.min(LAST, Math.max(0, Math.round(t)));
       if (s !== shownStage) {
+        const prev = shownStage;
         shownStage = s;
+        if (prev !== -1 && s === LAST && prev !== LAST) enterContext();   // stage 05: Google basemap + context view
+        else if (prev === LAST && s !== LAST) leaveContext();
         stageBtns.forEach((b, i) => { b.classList.toggle("active", i === s); b.setAttribute("aria-selected", i === s); });
         $("stageNum").textContent = String(s + 1).padStart(2, "0");
         $("stageName").textContent = STAGES[s][0];
@@ -1281,7 +1314,7 @@
     customElements.whenDefined("arcgis-basemap-gallery").then(() => {
       const gallery = $("gallery");
       gallery.source = new LocalBasemapsSource({
-        basemaps: ["satellite", "hybrid", "topo-vector", "gray-vector", "osm", "dark-gray-vector"].map(id => Basemap.fromId(id))
+        basemaps: [Basemap.fromId("satellite"), googleBasemap, ...["hybrid", "topo-vector", "gray-vector", "osm", "dark-gray-vector"].map(id => Basemap.fromId(id))]
       });
       gallery.view = view;
     });
@@ -1337,9 +1370,8 @@
       }
 
       // "Loading 3D context…" while the Google tiles stream in on stage 05
-      const loadingCtx = !!(google.layer?.visible && google.layer.loadStatus !== "failed" && (google.lv ? google.lv.updating : true));
+      const loadingCtx = isGoogle() && googleMesh.loadStatus !== "failed" && (view.updating || !google.fitted);
       if (contextLoading.hidden === loadingCtx) contextLoading.hidden = !loadingCtx;
-      if (google.layer?.visible && !google.lvPending) { google.lvPending = true; view.whenLayerView(google.layer).then(lv => { google.lv = lv; }).catch(() => {}); }
       if (autoOrbit && orbit) setCam({ ...orbit, heading: orbit.heading + dt * 3.5 });
       requestAnimationFrame(frame);
     }
@@ -1359,7 +1391,7 @@
       $("loader").classList.add("gone");
       drawStart = performance.now();
       loadRealisticTrees().catch(err => console.warn("Realistic trees unavailable", err));
-      preloadGoogleTiles();
+      setTimeout(() => (window.requestIdleCallback || setTimeout)(() => googleMesh.load().catch(() => {})), 9000);   // fetch the root tileset early
       flyTo(HOME, 6400);
       requestAnimationFrame(frame);
     } catch (err) {
