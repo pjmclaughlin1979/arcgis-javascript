@@ -42,6 +42,9 @@
     #caption .stage-row { display: flex; align-items: baseline; gap: 10px; }
     #stageNum { font-size: 34px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--accent); }
     #stageName { font-size: 17px; font-weight: 600; }
+    #caption .loading-note { margin-top: 10px; font-size: 12px; color: var(--accent); font-weight: 600; }
+    #caption .loading-note::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
+    @keyframes pulse { 50% { opacity: .25; } }
     #caption .coords { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--panel-line); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
     #caption .coords svg { width: 14px; height: 14px; flex: none; }
     #stageDesc { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: #454b55; min-height: 3em; transition: opacity .35s ease; }
@@ -140,6 +143,7 @@
     <h1>From sketch to home</h1>
     <div class="stage-row"><div id="stageNum">01</div><div id="stageName">Sketch</div></div>
     <p id="stageDesc"></p>
+    <div id="contextLoading" class="loading-note" hidden>Loading 3D context…</div>
     <div class="coords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>54.6584° N, 5.9726° W</div>
   </section>
 
@@ -1053,8 +1057,8 @@
     // its height is calibrated against the Esri terrain the house sits on.
     // ------------------------------------------------------------------
     const google = { layer: null, calibrated: false, tries: 0 };
-    // Lazy background preload: once the intro has settled and the browser is idle, add the
-    // layer at opacity 0 so its tiles (and the height calibration) are ready before stage 05.
+    // Lazy background preload: once the intro has settled and the browser is idle, create the
+    // layer (hidden) and load its root tileset, so stage 05 only has to stream the mesh itself.
     function preloadGoogleTiles() {
       const start = () => { if (!google.layer) addGoogleTiles(); };
       const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
@@ -1067,7 +1071,7 @@
         url: "https://tile.googleapis.com/v1/3dtiles/root.json",
         customParameters: { key: GOOGLE_MAPS_KEY },
         opacity: 0,
-        visible: true,
+        visible: false,
         elevationInfo: { mode: "absolute-height", offset: 0 },
         modifications: new SceneModifications([
           new SceneModification({ type: "clip", geometry: new Polygon({ rings: [siteRing], hasZ: true, spatialReference: SR }) })
@@ -1081,9 +1085,10 @@
     // ground meets the Esri terrain (the two can differ by the geoid height).
     function calibrateGoogleSoon() {
       setTimeout(async () => {
-        if (!google.layer || google.calibrated || google.tries++ > 40) return;
+        if (!google.layer || google.calibrated || google.tries > 40) return;
         try {
           if (google.layer.visible) {
+            google.tries++;                                   // only attempts while shown count
             const lv = await view.whenLayerView(google.layer);
             if (!lv.updating && !view.updating) {
               const diffs = [];
@@ -1163,7 +1168,9 @@
       setOpacity(L_lights, smooth(2.55, 3.0, t));
       // stage 05: Google Photorealistic 3D Tiles around the site (added on first use so no tiles are requested before)
       if (t > 3.02 && !google.layer) addGoogleTiles();     // reached stage 05 before the background preload
-      if (google.layer) {                                 // stays visible (opacity 0) so tiles stream in beforehand
+      if (google.layer) {                                 // hidden (no mesh requested or drawn) until stage 05
+        const on = t > 3.05;
+        if (google.layer.visible !== on) google.layer.visible = on;
         const go = Math.round(smooth(3.1, 3.75, t) * 500) / 500;
         if (google.layer._o !== go) { google.layer._o = go; google.layer.opacity = go; }
       }
@@ -1257,6 +1264,7 @@
     function stopPlay() { if (playing) setPlay(false); }
     playBtn.addEventListener("click", () => setPlay(!playing));
 
+    const contextLoading = $("contextLoading");
     const basemapBtn = $("basemapBtn"), basemapPanel = $("basemapPanel");
     const weatherBtn = $("weatherBtn"), weatherPanel = $("weatherPanel");
     function toggleBasemapPanel(on = basemapPanel.hidden) {
@@ -1328,6 +1336,10 @@
         if (n !== drawn) { drawn = n; sketchGraphic.geometry = new Polyline({ paths: toMapPaths(sketchPaths.slice(0, n)), hasZ: true, spatialReference: SR }); }
       }
 
+      // "Loading 3D context…" while the Google tiles stream in on stage 05
+      const loadingCtx = !!(google.layer?.visible && google.layer.loadStatus !== "failed" && (google.lv ? google.lv.updating : true));
+      if (contextLoading.hidden === loadingCtx) contextLoading.hidden = !loadingCtx;
+      if (google.layer?.visible && !google.lvPending) { google.lvPending = true; view.whenLayerView(google.layer).then(lv => { google.lv = lv; }).catch(() => {}); }
       if (autoOrbit && orbit) setCam({ ...orbit, heading: orbit.heading + dt * 3.5 });
       requestAnimationFrame(frame);
     }
