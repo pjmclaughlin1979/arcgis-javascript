@@ -95,14 +95,15 @@
       position: absolute; right: 20px; top: 116px; display: flex; flex-direction: column; gap: 8px;
       filter: drop-shadow(0 4px 12px rgba(20, 24, 32, 0.14));
     }
-    #basemapPanel {
+    #basemapPanel, #weatherPanel {
       position: absolute; right: 20px; bottom: 112px; width: 280px; max-height: min(460px, calc(100vh - 260px));
       padding: 12px 10px 10px; display: flex; flex-direction: column; gap: 8px;
       transition: opacity .25s ease, transform .25s ease;
     }
-    #basemapPanel[hidden] { display: flex; opacity: 0; transform: translateY(8px); pointer-events: none; visibility: hidden; }
-    #basemapPanel .title { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 0 6px; }
-    #basemapPanel .note { font-size: 11.5px; color: var(--muted); padding: 0 6px; line-height: 1.4; }
+    #basemapPanel[hidden], #weatherPanel[hidden] { display: flex; opacity: 0; transform: translateY(8px); pointer-events: none; visibility: hidden; }
+    #basemapPanel .title, #weatherPanel .title { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 0 6px; }
+    #basemapPanel .note, #weatherPanel .note { font-size: 11.5px; color: var(--muted); padding: 0 6px; line-height: 1.4; }
+    #weather { display: block; width: 100%; max-width: 100%; overflow: auto; border-radius: 10px; }
     #gallery { display: block; width: 100%; max-width: 100%; overflow: auto; border-radius: 10px; min-height: 120px; }
 
     #loader {
@@ -122,7 +123,7 @@
       #stageDesc { font-size: 12.5px; }
       #hint { display: none; }
       #navTools { right: 12px; top: auto; bottom: 168px; }
-      #basemapPanel { left: 12px; right: 12px; width: auto; bottom: 150px; }
+      #basemapPanel, #weatherPanel { left: 12px; right: 12px; width: auto; bottom: 150px; }
       #dock { bottom: 12px; grid-template-columns: auto 1fr auto; gap: 10px; }
       #scrub { grid-column: 1 / -1; order: -1; }
       #dock .tools:last-child { grid-column: 3; }
@@ -145,7 +146,7 @@
   <aside id="hint" class="panel">
     <div><b>Drag</b> pan · <b>Right-drag</b> rotate</div>
     <div><b>Scroll</b> zoom · <b>Arrows</b> move</div>
-    <div><b>1–5</b> stages · <b>Space</b> play · <b>B</b> basemap</div>
+    <div><b>1–5</b> stages · <b>Space</b> play · <b>B</b> basemap · <b>W</b> weather</div>
   </aside>
 
   <div id="navTools" aria-label="Map navigation">
@@ -156,7 +157,7 @@
 
   <section id="dock" class="panel">
     <div class="tools">
-      <button id="play" class="btn" aria-pressed="false" title="Play through stages (Space)" aria-label="Play">
+      <button id="play" class="btn" aria-pressed="false" title="Play through the stages (Space); stops at stage 05" aria-label="Play">
         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
       </button>
     </div>
@@ -186,6 +187,9 @@
       <button id="basemapBtn" class="btn" aria-pressed="false" aria-controls="basemapPanel" title="Basemap (B)" aria-label="Choose basemap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
       </button>
+      <button id="weatherBtn" class="btn" aria-pressed="false" aria-controls="weatherPanel" title="Weather (W)" aria-label="Weather">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 11.2 3.5 3.5 0 0 0 7 18z"/></svg>
+      </button>
       <button id="reset" class="btn" title="Reset view" aria-label="Reset view">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.34-5.66"/><path d="M4 4v4h4"/></svg>
       </button>
@@ -196,6 +200,12 @@
     <div class="title">Basemap</div>
     <arcgis-basemap-gallery id="gallery"></arcgis-basemap-gallery>
     <div class="note">The map fades in with the design: faint under the sketch and model stages, full strength at the finish.</div>
+  </section>
+
+  <section id="weatherPanel" class="panel" hidden aria-label="Weather">
+    <div class="title">Weather</div>
+    <arcgis-weather id="weather"></arcgis-weather>
+    <div class="note">Rain, snow, fog and clouds use the live sky; sunny weather returns to the stage colours. Weather is available close to the ground.</div>
   </section>
 
   <div id="loader"><div style="text-align:center"><div id="loaderText">Loading scene</div><div class="bar"></div></div></div>
@@ -1043,6 +1053,13 @@
     // its height is calibrated against the Esri terrain the house sits on.
     // ------------------------------------------------------------------
     const google = { layer: null, calibrated: false, tries: 0 };
+    // Lazy background preload: once the intro has settled and the browser is idle, add the
+    // layer at opacity 0 so its tiles (and the height calibration) are ready before stage 05.
+    function preloadGoogleTiles() {
+      const start = () => { if (!google.layer) addGoogleTiles(); };
+      const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+      setTimeout(() => idle(start, { timeout: 5000 }), 9000);
+    }
     function addGoogleTiles() {
       const siteRing = lawnRing.map(([x, y]) => [x, y, baseZ]);
       google.layer = new IntegratedMesh3DTilesLayer({
@@ -1050,7 +1067,7 @@
         url: "https://tile.googleapis.com/v1/3dtiles/root.json",
         customParameters: { key: GOOGLE_MAPS_KEY },
         opacity: 0,
-        visible: false,
+        visible: true,
         elevationInfo: { mode: "absolute-height", offset: 0 },
         modifications: new SceneModifications([
           new SceneModification({ type: "clip", geometry: new Polygon({ rings: [siteRing], hasZ: true, spatialReference: SR }) })
@@ -1064,7 +1081,7 @@
     // ground meets the Esri terrain (the two can differ by the geoid height).
     function calibrateGoogleSoon() {
       setTimeout(async () => {
-        if (!google.layer || google.calibrated || google.tries++ > 20) return;
+        if (!google.layer || google.calibrated || google.tries++ > 40) return;
         try {
           if (google.layer.visible) {
             const lv = await view.whenLayerView(google.layer);
@@ -1097,8 +1114,8 @@
     // ------------------------------------------------------------------
     function sunDate(t) {
       // 21 September on site: early afternoon for the model stages, sinking to a low golden sun (≈18:50 BST) for the finish.
-      // …and back to mid-afternoon for the context stage, to match the daylight in the photorealistic tiles.
-      const minutes = lerp(lerp(13 * 60 + 20, 17 * 60 + 50, smooth(2.0, 3.0, t)), 14 * 60 + 30, smooth(3.0, 4.0, t));
+      // The context stage keeps the same evening light as the finish.
+      const minutes = lerp(13 * 60 + 20, 17 * 60 + 50, smooth(2.0, 3.0, t));
       return new Date(Date.UTC(2025, 8, 21, 0, Math.round(minutes)));
     }
     // Layers with edge rendering stay "visible" and are hidden through opacity only: toggling
@@ -1119,7 +1136,7 @@
     };
     massGraphic.baseMesh = massMesh; furnWhiteGraphic.baseMesh = furnWhiteMesh;
 
-    const BG = [[245, 242, 235], [236, 238, 240], [233, 235, 237], [62, 70, 102], [172, 198, 226]];
+    const BG = [[245, 242, 235], [236, 238, 240], [233, 235, 237], [62, 70, 102], [62, 70, 102]];
     const GROUND = [[245, 242, 235], [226, 226, 222], [222, 223, 220], [76, 96, 58], [76, 96, 58]];
     const colorAt = (stops, t) => { const i = Math.min(stops.length - 2, Math.floor(t)); return lerpColor(stops[i], stops[i + 1], smooth(0, 1, t - i)); };
 
@@ -1143,10 +1160,13 @@
       setOpacity(L_treesFin, realTrees.ready ? 0 : smooth(2.3, 2.8, t));
       setOpacity(L_treesReal, realTrees.ready ? smooth(2.3, 2.8, t) : 0);
       setOpacity(L_water, 0.72 * smooth(2.4, 2.85, t)); // let the lit pool lining glow through
-      setOpacity(L_lights, smooth(2.55, 3.0, t) * (1 - 0.85 * smooth(3.1, 3.7, t)));
+      setOpacity(L_lights, smooth(2.55, 3.0, t));
       // stage 05: Google Photorealistic 3D Tiles around the site (added on first use so no tiles are requested before)
-      if (t > 3.02 && !google.layer) addGoogleTiles();
-      if (google.layer) setOpacity(google.layer, smooth(3.1, 3.75, t));
+      if (t > 3.02 && !google.layer) addGoogleTiles();     // reached stage 05 before the background preload
+      if (google.layer) {                                 // stays visible (opacity 0) so tiles stream in beforehand
+        const go = Math.round(smooth(3.1, 3.75, t) * 500) / 500;
+        if (google.layer._o !== go) { google.layer._o = go; google.layer.opacity = go; }
+      }
 
       // massing rises out of the plinth
       const rise = Math.round((0.04 + 0.96 * smooth(0.12, 0.95, t)) * 200) / 200;
@@ -1172,7 +1192,14 @@
       }
 
       const bg = colorAt(BG, t), gr = colorAt(GROUND, t);
-      if (bg.join() !== lastApplied.bg) { view.environment.background = { type: "color", color: bg }; lastApplied.bg = bg.join(); document.body.style.background = `rgb(${bg})`; }
+      // Weather other than "sunny" needs the SDK's own sky (atmosphere) to show clouds, rain, snow or fog.
+      const weatherSky = (view.environment.weather?.type ?? "sunny") !== "sunny";
+      if (weatherSky !== lastApplied.sky) {
+        lastApplied.sky = weatherSky; lastApplied.bg = "";
+        view.environment.atmosphereEnabled = weatherSky;
+        if (weatherSky) view.environment.background = null;
+      }
+      if (!weatherSky && bg.join() !== lastApplied.bg) { view.environment.background = { type: "color", color: bg }; lastApplied.bg = bg.join(); document.body.style.background = `rgb(${bg})`; }
       if (gr.join() !== lastApplied.ground) { map.ground.surfaceColor = gr; lastApplied.ground = gr.join(); }
       const d = sunDate(t);
       if (d.getTime() !== lastApplied.minutes) { view.environment.lighting.date = d; lastApplied.minutes = d.getTime(); }
@@ -1187,7 +1214,7 @@
       ["Massing", "Solid white volumes rise from the plinth to test proportion, shadow and the carved-out void of the courtyard."],
       ["Detail", "Glazing, mullions, interior walls and furniture arrive, resolving how each room opens to the courtyard."],
       ["Finish", "Limestone, charred timber, teak and water, landscaped and lit under a low evening sun."],
-      ["Context", "The finished house set into its real surroundings with Google Photorealistic 3D Tiles, back in afternoon light."]
+      ["Context", "The finished house set into its real surroundings with Google Photorealistic 3D Tiles, under the same evening light."]
     ];
     const $ = (id) => document.getElementById(id);
     const range = $("range"), thumb = $("thumb"), fill = $("fill"), ticks = [...document.querySelectorAll(".tick")];
@@ -1231,8 +1258,18 @@
     playBtn.addEventListener("click", () => setPlay(!playing));
 
     const basemapBtn = $("basemapBtn"), basemapPanel = $("basemapPanel");
-    function toggleBasemapPanel(on = basemapPanel.hidden) { basemapPanel.hidden = !on; basemapBtn.setAttribute("aria-pressed", on); }
+    const weatherBtn = $("weatherBtn"), weatherPanel = $("weatherPanel");
+    function toggleBasemapPanel(on = basemapPanel.hidden) {
+      basemapPanel.hidden = !on; basemapBtn.setAttribute("aria-pressed", on);
+      if (on) toggleWeatherPanel(false);
+    }
+    function toggleWeatherPanel(on = weatherPanel.hidden) {
+      weatherPanel.hidden = !on; weatherBtn.setAttribute("aria-pressed", on);
+      if (on) toggleBasemapPanel(false);
+    }
     basemapBtn.addEventListener("click", () => toggleBasemapPanel());
+    weatherBtn.addEventListener("click", () => toggleWeatherPanel());
+    customElements.whenDefined("arcgis-weather").then(() => { $("weather").view = view; });
     customElements.whenDefined("arcgis-basemap-gallery").then(() => {
       const gallery = $("gallery");
       gallery.source = new LocalBasemapsSource({
@@ -1249,17 +1286,18 @@
     const orbitBtn = $("orbit");
     function toggleAutoOrbit(on = !autoOrbit) { autoOrbit = on; orbitBtn.setAttribute("aria-pressed", on); if (on) orbit = orbitFromView(); }
     orbitBtn.addEventListener("click", () => toggleAutoOrbit());
-    $("reset").addEventListener("click", () => { toggleAutoOrbit(false); flyTo(HOME, 2000); });
+    $("reset").addEventListener("click", () => { toggleAutoOrbit(false); flyTo(HOME, 4000); });
 
     window.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT" && e.key.startsWith("Arrow")) return;
-      if (basemapPanel.contains(e.target)) return;
+      if (basemapPanel.contains(e.target) || weatherPanel.contains(e.target)) return;
       if (/^[1-5]$/.test(e.key)) { stopPlay(); target = +e.key - 1; }
       else if (e.key === " ") { e.preventDefault(); setPlay(!playing); }
       else if (e.key === "]") { stopPlay(); target = Math.min(LAST, Math.floor(target + 1.001)); }
       else if (e.key === "[") { stopPlay(); target = Math.max(0, Math.ceil(target - 1.001)); }
       else if (e.key === "o") toggleAutoOrbit();
       else if (e.key === "b") toggleBasemapPanel();
+      else if (e.key === "w") toggleWeatherPanel();
     });
 
 
@@ -1273,12 +1311,12 @@
       if (playing && now > holdUntil) {
         const next = Math.min(LAST, Math.floor(target + 1e-6) + 1);
         if (Math.abs(current - target) < 0.004) {
-          if (target >= LAST) { target = 0; holdUntil = now + 900; }
-          else { target = next; holdUntil = now + 3200; }
+          if (target >= LAST) setPlay(false);            // stop once the final stage is reached
+          else { target = next; holdUntil = now + 6400; }
         }
       }
       // critically-damped follow gives smooth morphs from clicks, keys and the slider
-      const k = scrubbing ? 14 : (playing ? 1.6 : 3.2);
+      const k = scrubbing ? 14 : (playing ? 0.8 : 1.6);   // morph speed (half the original pace)
       current += (target - current) * (1 - Math.exp(-dt * k));
       if (Math.abs(target - current) < 0.0005) current = target;
       applyStage(current);
@@ -1286,11 +1324,11 @@
 
       // progressive sketch "drawing"
       if (drawStart && drawn < sketchPaths.length) {
-        const n = Math.min(sketchPaths.length, Math.ceil(((now - drawStart) / 2600) * sketchPaths.length));
+        const n = Math.min(sketchPaths.length, Math.ceil(((now - drawStart) / 5200) * sketchPaths.length));
         if (n !== drawn) { drawn = n; sketchGraphic.geometry = new Polyline({ paths: toMapPaths(sketchPaths.slice(0, n)), hasZ: true, spatialReference: SR }); }
       }
 
-      if (autoOrbit && orbit) setCam({ ...orbit, heading: orbit.heading + dt * 7 });
+      if (autoOrbit && orbit) setCam({ ...orbit, heading: orbit.heading + dt * 3.5 });
       requestAnimationFrame(frame);
     }
 
@@ -1309,7 +1347,8 @@
       $("loader").classList.add("gone");
       drawStart = performance.now();
       loadRealisticTrees().catch(err => console.warn("Realistic trees unavailable", err));
-      flyTo(HOME, 3200);
+      preloadGoogleTiles();
+      flyTo(HOME, 6400);
       requestAnimationFrame(frame);
     } catch (err) {
       console.error(err);
