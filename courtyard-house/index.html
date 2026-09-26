@@ -42,6 +42,8 @@
     #caption .stage-row { display: flex; align-items: baseline; gap: 10px; }
     #stageNum { font-size: 34px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--accent); }
     #stageName { font-size: 17px; font-weight: 600; }
+    #caption .coords { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--panel-line); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    #caption .coords svg { width: 14px; height: 14px; flex: none; }
     #stageDesc { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: #454b55; min-height: 3em; transition: opacity .35s ease; }
 
     /* Bottom dock */
@@ -88,6 +90,16 @@
     }
     #hint b { color: var(--ink); font-weight: 600; }
 
+    #basemapPanel {
+      position: absolute; right: 20px; bottom: 112px; width: 280px; max-height: min(460px, calc(100vh - 260px));
+      padding: 12px 10px 10px; display: flex; flex-direction: column; gap: 8px;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    #basemapPanel[hidden] { display: flex; opacity: 0; transform: translateY(8px); pointer-events: none; visibility: hidden; }
+    #basemapPanel .title { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 0 6px; }
+    #basemapPanel .note { font-size: 11.5px; color: var(--muted); padding: 0 6px; line-height: 1.4; }
+    #gallery { display: block; width: 100%; max-width: 100%; overflow: auto; border-radius: 10px; min-height: 120px; }
+
     #loader {
       position: absolute; inset: 0; display: grid; place-items: center; background: #f5f2eb; z-index: 10;
       transition: opacity .8s ease; font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase;
@@ -104,6 +116,7 @@
       #stageNum { font-size: 26px; }
       #stageDesc { font-size: 12.5px; }
       #hint { display: none; }
+      #basemapPanel { left: 12px; right: 12px; width: auto; bottom: 150px; }
       #dock { bottom: 12px; grid-template-columns: auto 1fr auto; gap: 10px; }
       #scrub { grid-column: 1 / -1; order: -1; }
       #dock .tools:last-child { grid-column: 3; }
@@ -120,13 +133,14 @@
     <h1>From sketch to home</h1>
     <div class="stage-row"><div id="stageNum">01</div><div id="stageName">Sketch</div></div>
     <p id="stageDesc"></p>
+    <div class="coords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>54.6584° N, 5.9726° W</div>
   </section>
 
   <aside id="hint" class="panel">
     <div><b>Drag</b> orbit</div>
     <div><b>Right-drag</b> / <b>Shift-drag</b> pan</div>
     <div><b>Scroll</b> zoom</div>
-    <div><b>1–4</b> stages · <b>Space</b> play</div>
+    <div><b>1–4</b> stages · <b>Space</b> play · <b>B</b> basemap</div>
   </aside>
 
   <section id="dock" class="panel">
@@ -156,10 +170,19 @@
       <button id="orbit" class="btn" aria-pressed="false" title="Auto-orbit" aria-label="Auto-orbit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 4 0 1 1-4.5-3.46"/><path d="M17 5.5l-.5 3 3 .5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
       </button>
+      <button id="basemapBtn" class="btn" aria-pressed="false" aria-controls="basemapPanel" title="Basemap (B)" aria-label="Choose basemap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
+      </button>
       <button id="reset" class="btn" title="Reset view" aria-label="Reset view">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.34-5.66"/><path d="M4 4v4h4"/></svg>
       </button>
     </div>
+  </section>
+
+  <section id="basemapPanel" class="panel" hidden aria-label="Basemap">
+    <div class="title">Basemap</div>
+    <arcgis-basemap-gallery id="gallery"></arcgis-basemap-gallery>
+    <div class="note">The map fades in with the design: faint under the sketch and model stages, full strength at the finish.</div>
   </section>
 
   <div id="loader"><div style="text-align:center"><div id="loaderText">Loading scene</div><div class="bar"></div></div></div>
@@ -167,7 +190,8 @@
   <script type="module">
     const [
       Map, SceneView, Graphic, GraphicsLayer, Mesh, MeshComponent, MeshMaterialMetallicRoughness,
-      MeshTexture, MeshGeoreferencedVertexSpace, MeshTransform, Point, Polyline, Polygon, Extent, SpatialReference, Camera
+      MeshTexture, MeshLocalVertexSpace, MeshTransform, Point, Polyline, Polygon, SpatialReference, Camera,
+      Basemap, LocalBasemapsSource
     ] = await $arcgis.import([
       "@arcgis/core/Map.js",
       "@arcgis/core/views/SceneView.js",
@@ -177,21 +201,35 @@
       "@arcgis/core/geometry/support/MeshComponent.js",
       "@arcgis/core/geometry/support/MeshMaterialMetallicRoughness.js",
       "@arcgis/core/geometry/support/MeshTexture.js",
-      "@arcgis/core/geometry/support/MeshGeoreferencedVertexSpace.js",
+      "@arcgis/core/geometry/support/MeshLocalVertexSpace.js",
       "@arcgis/core/geometry/support/MeshTransform.js",
       "@arcgis/core/geometry/Point.js",
       "@arcgis/core/geometry/Polyline.js",
       "@arcgis/core/geometry/Polygon.js",
-      "@arcgis/core/geometry/Extent.js",
       "@arcgis/core/geometry/SpatialReference.js",
-      "@arcgis/core/Camera.js"
+      "@arcgis/core/Camera.js",
+      "@arcgis/core/Basemap.js",
+      "@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource.js"
     ]);
 
     // ------------------------------------------------------------------
-    // Site setup. The house sits at 0°N 0°E in Web Mercator, where one map
-    // unit equals one metre, so all geometry below is authored in metres.
+    // Site setup. All geometry is authored in metres in a local frame
+    // (x east, y north, z up) centred on the site. Meshes use a local vertex
+    // space anchored there; lines and the pool polygon are converted to
+    // Web Mercator with P(), which applies the Mercator scale factor.
     // ------------------------------------------------------------------
     const SR = SpatialReference.WebMercator;
+    const SITE = { lon: -5.97259, lat: 54.65843 };
+    const R_EARTH = 6378137;
+    const X0 = (SITE.lon * Math.PI / 180) * R_EARTH;
+    const Y0 = Math.log(Math.tan(Math.PI / 4 + (SITE.lat * Math.PI / 180) / 2)) * R_EARTH;
+    const K = 1 / Math.cos(SITE.lat * Math.PI / 180);     // metres -> Web Mercator units
+    const P = (x, y, z = 0) => [X0 + x * K, Y0 + y * K, z];
+    const toLocal = (pt) => {                               // map point -> local metres
+      let { x, y } = pt;
+      if (pt.spatialReference?.isWGS84) { x = (pt.longitude * Math.PI / 180) * R_EARTH; y = Math.log(Math.tan(Math.PI / 4 + (pt.latitude * Math.PI / 180) / 2)) * R_EARTH; }
+      return [(x - X0) / K, (y - Y0) / K, pt.z];
+    };
     const F = 0.9;            // plinth / ground-floor level
     const RT = F + 3.2;       // underside of lower roofs
     const RZ = RT + 0.35;     // top of lower roofs
@@ -409,7 +447,8 @@
       }
     }
 
-    // Build a (multi-material) Mesh from { materialKey: Geo } in a local vertex space.
+    // Build a (multi-material) Mesh from { materialKey: Geo } in a local vertex space
+    // anchored at `origin` (local metres); `shift` is subtracted from the authored vertices.
     function buildMesh(groups, origin = [0, 0, 0], shift = origin) {
       const pos = [], nrm = [], uv = [], comps = [];
       for (const [key, g] of Object.entries(groups)) {
@@ -421,7 +460,7 @@
       }
       return new Mesh({
         spatialReference: SR,
-        vertexSpace: new MeshGeoreferencedVertexSpace({ origin }),
+        vertexSpace: new MeshLocalVertexSpace({ origin: P(...origin) }),
         vertexAttributes: { position: new Float64Array(pos), normal: new Float32Array(nrm), uv: new Float32Array(uv) },
         components: comps
       });
@@ -626,8 +665,8 @@
 
     // Landscape site (finished stage)
     const site = new Groups();
-    site.box("grass", [-110, 110, -110, 110, 0, 0.04]);
-    for (let y = -13.2; y > -58; y -= 1.05) site.box("paver", [7.2, 9.8, y - 0.6, y, 0.04, 0.07]);
+    site.box("grass", [-30, 30, -28, 26, 0, 0.04]);
+    for (let y = -13.2; y > -27.5; y -= 1.05) site.box("paver", [7.2, 9.8, y - 0.6, y, 0.04, 0.07]);
 
     // Trees: [x, y, z, type, scale]
     const TREES = [
@@ -750,6 +789,7 @@
     // ------------------------------------------------------------------
     // Map, view and layers
     // ------------------------------------------------------------------
+    const toMapPaths = (paths) => paths.map(path => path.map(p => P(...p)));
     const layer = (title, extra = {}) => new GraphicsLayer(Object.assign({ title, elevationInfo: { mode: "absolute-height" } }, extra));
     const L_construct = layer("construction");
     const L_sketch = layer("sketch");
@@ -774,11 +814,11 @@
     const massEdges = { type: "sketch", color: [40, 44, 52, 0.75], size: 1.1, extensionLength: 0.6 };
 
     L_construct.add(new Graphic({
-      geometry: new Polyline({ paths: constructionPaths, hasZ: true, spatialReference: SR }),
+      geometry: new Polyline({ paths: toMapPaths(constructionPaths), hasZ: true, spatialReference: SR }),
       symbol: { type: "line-3d", symbolLayers: [{ type: "line", size: 0.8, material: { color: [70, 120, 190, 0.35] } }] }
     }));
     const sketchSymbol = { type: "line-3d", symbolLayers: [{ type: "line", size: 1.4, cap: "round", join: "round", material: { color: [38, 42, 52, 0.85] } }] };
-    const sketchGraphic = new Graphic({ geometry: new Polyline({ paths: sketchPaths.slice(0, 1), hasZ: true, spatialReference: SR }), symbol: sketchSymbol });
+    const sketchGraphic = new Graphic({ geometry: new Polyline({ paths: toMapPaths(sketchPaths.slice(0, 1)), hasZ: true, spatialReference: SR }), symbol: sketchSymbol });
     L_sketch.add(sketchGraphic);
 
     const massOrigin = [0, 0, F];
@@ -820,7 +860,7 @@
 
     L_water.add(new Graphic({
       geometry: new Polygon({
-        rings: [[[POOL[0], POOL[2], F - 0.12], [POOL[0], POOL[3], F - 0.12], [POOL[1], POOL[3], F - 0.12], [POOL[1], POOL[2], F - 0.12], [POOL[0], POOL[2], F - 0.12]]],
+        rings: [[[POOL[0], POOL[2]], [POOL[0], POOL[3]], [POOL[1], POOL[3]], [POOL[1], POOL[2]], [POOL[0], POOL[2]]].map(([x, y]) => P(x, y, F - 0.12))],
         hasZ: true, spatialReference: SR
       }),
       symbol: { type: "polygon-3d", symbolLayers: [{ type: "water", waveDirection: 200, color: [58, 178, 200], waveStrength: "calm", waterbodySize: "small" }] }
@@ -828,7 +868,7 @@
 
     ALL.forEach(l => { l.opacity = 0; l.visible = [L_massEdges, L_plinthWhite, L_archWhite].includes(l); });
 
-    const map = new Map({ layers: ALL, ground: { surfaceColor: [245, 242, 235], navigationConstraint: { type: "stay-above" } } });
+    const map = new Map({ basemap: "satellite", layers: ALL, ground: { surfaceColor: [245, 242, 235], navigationConstraint: { type: "stay-above" } } });
 
     const PIVOT_Z = 2.2;
     // pull the camera back on narrow (portrait) screens so the whole house fits
@@ -839,9 +879,8 @@
     const view = new SceneView({
       container: "view",
       map,
-      viewingMode: "local",
+      viewingMode: "global",
       spatialReference: SR,
-      clippingArea: new Extent({ xmin: -110, ymin: -110, xmax: 110, ymax: 110, spatialReference: SR }),
       camera: orbitCamera(INTRO),
       qualityProfile: "high",
       popupEnabled: false,
@@ -850,9 +889,8 @@
         atmosphereEnabled: false,
         starsEnabled: false,
         background: { type: "color", color: [245, 242, 235] },
-        lighting: { type: "sun", date: sunDate(0), directShadowsEnabled: true, displayUTCOffset: 0, glow: { intensity: 0.35 } }
-      },
-      constraints: { clipDistance: { mode: "manual", near: 0.5, far: 2000 } }
+        lighting: { type: "sun", date: sunDate(0), directShadowsEnabled: true, displayUTCOffset: 1, glow: { intensity: 0.35 } }
+      }
     });
 
     // ------------------------------------------------------------------
@@ -865,15 +903,15 @@
     function orbitCamera(o) {
       const f = forwardOf(o.heading, o.tilt);
       return new Camera({
-        position: new Point({ x: o.target[0] - f[0] * o.dist, y: o.target[1] - f[1] * o.dist, z: o.target[2] - f[2] * o.dist, spatialReference: SR }),
+        position: new Point({ ...Object.fromEntries(["x", "y", "z"].map((k, i) => [k, P(o.target[0] - f[0] * o.dist, o.target[1] - f[1] * o.dist, o.target[2] - f[2] * o.dist)[i]])), spatialReference: SR }),
         heading: o.heading, tilt: o.tilt, fov: 50
       });
     }
     function orbitFromCamera(cam = view.camera) {
-      const p = cam.position, f = forwardOf(cam.heading, cam.tilt);
-      let dist = f[2] < -0.02 ? (p.z - PIVOT_Z) / -f[2] : 60;
+      const p = toLocal(cam.position), f = forwardOf(cam.heading, cam.tilt);
+      let dist = f[2] < -0.02 ? (p[2] - PIVOT_Z) / -f[2] : 60;
       dist = Math.min(Math.max(dist, 6), 260);
-      return { target: [p.x + f[0] * dist, p.y + f[1] * dist, PIVOT_Z], heading: cam.heading, tilt: cam.tilt, dist };
+      return { target: [p[0] + f[0] * dist, p[1] + f[1] * dist, PIVOT_Z], heading: cam.heading, tilt: cam.tilt, dist };
     }
     const clampOrbit = (o) => {
       o.tilt = Math.min(Math.max(o.tilt, 12), 88);
@@ -927,9 +965,9 @@
     // Stage morph
     // ------------------------------------------------------------------
     function sunDate(t) {
-      // Dec 21 at 0°N 0°E: early afternoon for the model stages, sinking to a low golden sun for the finish.
-      const minutes = lerp(14 * 60 + 20, 17 * 60 + 38, smooth(2.0, 3.0, t));
-      return new Date(Date.UTC(2025, 11, 21, 0, Math.round(minutes)));
+      // 21 September on site: early afternoon for the model stages, sinking to a low golden sun (≈18:50 BST) for the finish.
+      const minutes = lerp(13 * 60 + 20, 17 * 60 + 50, smooth(2.0, 3.0, t));
+      return new Date(Date.UTC(2025, 8, 21, 0, Math.round(minutes)));
     }
     // Layers with edge rendering stay "visible" and are hidden through opacity only: toggling
     // visibility while their edges are still being generated trips an internal SceneView race.
@@ -986,6 +1024,15 @@
       });
       if (L_treesWhite.visible) grow(treeWhiteGraphics, 1.45, 1.9, 0.15);
       if (L_treesFin.visible) grow(treeFinGraphics, 2.2, 2.6, 0.35);
+
+      // basemap: a faint context map under the sketch/model stages, full imagery for the finish
+      const bmo = Math.round((t < 2 ? lerp(0.2, 0.38, smooth(0, 2, t)) : lerp(0.38, 1, smooth(2.1, 2.8, t))) * 200) / 200;
+      const bm = map.basemap, nLayers = bm ? bm.baseLayers.length + bm.referenceLayers.length : 0;
+      if (bm && (bm !== lastApplied.bm || nLayers !== lastApplied.bmn || bmo !== lastApplied.bmo)) {
+        bm.baseLayers.forEach(l => { l.opacity = bmo; });
+        bm.referenceLayers.forEach(l => { l.opacity = bmo; });
+        Object.assign(lastApplied, { bm, bmn: nLayers, bmo });
+      }
 
       const bg = colorAt(BG, t), gr = colorAt(GROUND, t);
       if (bg.join() !== lastApplied.bg) { view.environment.background = { type: "color", color: bg }; lastApplied.bg = bg.join(); document.body.style.background = `rgb(${bg})`; }
@@ -1044,6 +1091,17 @@
     function stopPlay() { if (playing) setPlay(false); }
     playBtn.addEventListener("click", () => setPlay(!playing));
 
+    const basemapBtn = $("basemapBtn"), basemapPanel = $("basemapPanel");
+    function toggleBasemapPanel(on = basemapPanel.hidden) { basemapPanel.hidden = !on; basemapBtn.setAttribute("aria-pressed", on); }
+    basemapBtn.addEventListener("click", () => toggleBasemapPanel());
+    customElements.whenDefined("arcgis-basemap-gallery").then(() => {
+      const gallery = $("gallery");
+      gallery.source = new LocalBasemapsSource({
+        basemaps: ["satellite", "hybrid", "topo-vector", "gray-vector", "osm", "dark-gray-vector"].map(id => Basemap.fromId(id))
+      });
+      gallery.view = view;
+    });
+
     const orbitBtn = $("orbit");
     function toggleAutoOrbit(on = !autoOrbit) { autoOrbit = on; orbitBtn.setAttribute("aria-pressed", on); if (on) { camTween = null; orbit = orbitFromCamera(); } }
     orbitBtn.addEventListener("click", () => toggleAutoOrbit());
@@ -1051,11 +1109,13 @@
 
     window.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT" && e.key.startsWith("Arrow")) return;
+      if (basemapPanel.contains(e.target)) return;
       if (/^[1-4]$/.test(e.key)) { stopPlay(); target = +e.key - 1; }
       else if (e.key === " ") { e.preventDefault(); setPlay(!playing); }
       else if (e.key === "ArrowRight") { stopPlay(); target = Math.min(3, Math.floor(target + 1.001)); }
       else if (e.key === "ArrowLeft") { stopPlay(); target = Math.max(0, Math.ceil(target - 1.001)); }
       else if (e.key === "o") toggleAutoOrbit();
+      else if (e.key === "b") toggleBasemapPanel();
     });
 
     function tweenCamera(to, dur) {
@@ -1089,7 +1149,7 @@
       // progressive sketch "drawing"
       if (drawStart && drawn < sketchPaths.length) {
         const n = Math.min(sketchPaths.length, Math.ceil(((now - drawStart) / 2600) * sketchPaths.length));
-        if (n !== drawn) { drawn = n; sketchGraphic.geometry = new Polyline({ paths: sketchPaths.slice(0, n), hasZ: true, spatialReference: SR }); }
+        if (n !== drawn) { drawn = n; sketchGraphic.geometry = new Polyline({ paths: toMapPaths(sketchPaths.slice(0, n)), hasZ: true, spatialReference: SR }); }
       }
 
       if (camTween) {
