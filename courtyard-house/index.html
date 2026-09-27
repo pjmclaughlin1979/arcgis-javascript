@@ -37,8 +37,15 @@
       position: absolute; top: 20px; left: 20px; width: 340px; max-width: calc(100vw - 32px);
       padding: 18px 20px 18px;
     }
+    #captionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     #caption .eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
     #caption h1 { font-size: 20px; line-height: 1.2; margin: 6px 0 14px; font-weight: 700; letter-spacing: -.01em; }
+    #captionToggle { flex: none; width: 32px; height: 32px; margin: -4px -6px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+    #captionToggle:hover { background: rgba(29, 34, 43, 0.06); color: var(--ink); }
+    #captionToggle:focus-visible { outline: 3px solid rgba(194, 106, 45, .45); outline-offset: 2px; }
+    #captionToggle svg { width: 18px; height: 18px; transition: transform .2s; }
+    #caption.collapsed #captionToggle svg { transform: rotate(180deg); }
+    #caption.collapsed #captionDetails { display: none; }
     #caption .stage-row { display: flex; align-items: baseline; gap: 10px; }
     #stageNum { font-size: 34px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--accent); }
     #stageName { font-size: 17px; font-weight: 600; }
@@ -67,7 +74,7 @@
     .tools { display: flex; gap: 8px; }
 
     #scrub { position: relative; padding-top: 2px; }
-    #stages { display: grid; grid-template-columns: repeat(5, 1fr); margin: 0 -6px 6px; }
+    #stages { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 -6px 6px; }
     #stages button {
       appearance: none; border: 0; background: none; cursor: pointer; font: inherit; color: var(--muted);
       font-size: 12.5px; font-weight: 600; padding: 4px 6px; text-align: center; border-radius: 8px;
@@ -89,25 +96,31 @@
     #thumb { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: #fff; border: 2px solid var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,.2); pointer-events: none; }
     #range:focus-visible + #thumb { outline: 3px solid rgba(194, 106, 45, .45); outline-offset: 2px; }
 
-    #hint {
-      position: absolute; right: 20px; top: 20px; padding: 10px 14px; font-size: 12px; color: #454b55; line-height: 1.7;
-    }
-    #hint b { color: var(--ink); font-weight: 600; }
+    #controlsHelp { margin: 10px 0 0; font-size: 12px; color: #454b55; line-height: 1.7; }
+    #controlsHelp b { color: var(--ink); font-weight: 600; }
 
     #navTools {
-      position: absolute; right: 20px; top: 116px; display: flex; flex-direction: column; gap: 8px;
+      position: absolute; right: 20px; top: 20px; display: flex; flex-direction: column; gap: 8px;
       filter: drop-shadow(0 4px 12px rgba(20, 24, 32, 0.14));
     }
-    #basemapPanel, #weatherPanel {
+    #basemapPanel, #weatherPanel, #daylightPanel {
       position: absolute; right: 20px; bottom: 112px; width: 280px; max-height: min(460px, calc(100vh - 260px));
       padding: 12px 10px 10px; display: flex; flex-direction: column; gap: 8px;
       transition: opacity .25s ease, transform .25s ease;
     }
-    #basemapPanel[hidden], #weatherPanel[hidden] { display: flex; opacity: 0; transform: translateY(8px); pointer-events: none; visibility: hidden; }
-    #basemapPanel .title, #weatherPanel .title { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 0 6px; }
-    #basemapPanel .note, #weatherPanel .note { font-size: 11.5px; color: var(--muted); padding: 0 6px; line-height: 1.4; }
+    #basemapPanel[hidden], #weatherPanel[hidden], #daylightPanel[hidden] { display: flex; opacity: 0; transform: translateY(8px); pointer-events: none; visibility: hidden; }
+    #basemapPanel .title, #weatherPanel .title, #daylightPanel .title { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 0 6px; }
+    #basemapPanel .note, #weatherPanel .note, #daylightPanel .note { font-size: 11.5px; color: var(--muted); padding: 0 6px; line-height: 1.4; }
     #weather { display: block; width: 100%; max-width: 100%; overflow: auto; border-radius: 10px; }
     #gallery { display: block; width: 100%; max-width: 100%; overflow: auto; border-radius: 10px; min-height: 120px; }
+    #daylightPanel label { display: grid; gap: 5px; padding: 0 6px; font-size: 12px; color: #454b55; }
+    #daylightPanel input, #followStages {
+      min-height: 38px; border: 1px solid var(--panel-line); border-radius: 9px; background: #fff; color: var(--ink);
+      font: inherit; padding: 8px 10px;
+    }
+    #daylightPanel input:focus-visible, #followStages:focus-visible { outline: 3px solid rgba(194, 106, 45, .45); outline-offset: 2px; }
+    #followStages { cursor: pointer; font-size: 12px; font-weight: 600; }
+    #followStages:hover { border-color: rgba(29, 34, 43, 0.25); }
 
     #loader {
       position: absolute; inset: 0; display: grid; place-items: center; background: #f5f2eb; z-index: 10;
@@ -124,9 +137,8 @@
       #caption h1 { font-size: 17px; margin-bottom: 8px; }
       #stageNum { font-size: 26px; }
       #stageDesc { font-size: 12.5px; }
-      #hint { display: none; }
-      #navTools { right: 12px; top: auto; bottom: 168px; }
-      #basemapPanel, #weatherPanel { left: 12px; right: 12px; width: auto; bottom: 150px; }
+      #navTools { right: 12px; top: 12px; }
+      #basemapPanel, #weatherPanel, #daylightPanel { left: 12px; right: 12px; width: auto; bottom: 150px; }
       #dock { bottom: 12px; grid-template-columns: auto 1fr auto; gap: 10px; }
       #scrub { grid-column: 1 / -1; order: -1; }
       #dock .tools:last-child { grid-column: 3; }
@@ -139,19 +151,23 @@
   <div id="view" tabindex="0" aria-label="3D view of a courtyard house"></div>
 
   <section id="caption" class="panel" aria-live="polite">
-    <div class="eyebrow">Courtyard House · Design Evolution</div>
-    <h1>From sketch to home</h1>
-    <div class="stage-row"><div id="stageNum">01</div><div id="stageName">Sketch</div></div>
-    <p id="stageDesc"></p>
-    <div id="contextLoading" class="loading-note" hidden>Loading Google 3D tiles…</div>
-    <div class="coords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>54.6584° N, 5.9726° W</div>
+    <div id="captionHeader">
+      <div>
+        <div class="eyebrow">Courtyard House · Design Evolution</div>
+        <h1>From sketch to home</h1>
+      </div>
+      <button id="captionToggle" type="button" aria-expanded="true" aria-controls="captionDetails" aria-label="Collapse stage information" title="Collapse stage information">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </div>
+    <div id="captionDetails">
+      <div class="stage-row"><div id="stageNum">01</div><div id="stageName">Sketch</div></div>
+      <p id="stageDesc"></p>
+      <div id="googleLoading" class="loading-note" hidden>Loading Google 3D tiles…</div>
+      <p id="controlsHelp"><b>Drag</b> pan · <b>Right-drag</b> rotate<br><b>Scroll</b> zoom · <b>Arrows</b> move<br><b>1–4</b> stages · <b>Space</b> play · <b>B</b> basemap · <b>W</b> weather · <b>D</b> date/time</p>
+      <div class="coords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>54.6584° N, 5.9726° W</div>
+    </div>
   </section>
-
-  <aside id="hint" class="panel">
-    <div><b>Drag</b> pan · <b>Right-drag</b> rotate</div>
-    <div><b>Scroll</b> zoom · <b>Arrows</b> move</div>
-    <div><b>1–5</b> stages · <b>Space</b> play · <b>B</b> basemap · <b>W</b> weather</div>
-  </aside>
 
   <div id="navTools" aria-label="Map navigation">
     <arcgis-zoom id="navZoom"></arcgis-zoom>
@@ -161,7 +177,7 @@
 
   <section id="dock" class="panel">
     <div class="tools">
-      <button id="play" class="btn" aria-pressed="false" title="Play through the stages (Space); stops at stage 05" aria-label="Play">
+      <button id="play" class="btn" aria-pressed="false" title="Play through the stages (Space); stops at stage 04" aria-label="Play">
         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
       </button>
     </div>
@@ -171,16 +187,14 @@
         <button data-stage="1"><span>02</span>Massing</button>
         <button data-stage="2"><span>03</span>Detail</button>
         <button data-stage="3"><span>04</span>Finish</button>
-        <button data-stage="4"><span>05</span>Context</button>
       </div>
       <div id="rangeWrap">
         <div id="track"><div id="fill"></div></div>
         <div class="tick" style="left:0%"></div>
-        <div class="tick" style="left:25%"></div>
-        <div class="tick" style="left:50%"></div>
-        <div class="tick" style="left:75%"></div>
+        <div class="tick" style="left:33.333%"></div>
+        <div class="tick" style="left:66.667%"></div>
         <div class="tick" style="left:100%"></div>
-        <input id="range" type="range" min="0" max="4000" step="1" value="0" aria-label="Design stage" />
+        <input id="range" type="range" min="0" max="3000" step="1" value="0" aria-label="Design stage" />
         <div id="thumb"></div>
       </div>
     </div>
@@ -190,6 +204,9 @@
       </button>
       <button id="basemapBtn" class="btn" aria-pressed="false" aria-controls="basemapPanel" title="Basemap (B)" aria-label="Choose basemap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
+      </button>
+      <button id="daylightBtn" class="btn" aria-pressed="false" aria-controls="daylightPanel" title="Date and time (D)" aria-label="Set date and time">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
       </button>
       <button id="weatherBtn" class="btn" aria-pressed="false" aria-controls="weatherPanel" title="Weather (W)" aria-label="Weather">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 11.2 3.5 3.5 0 0 0 7 18z"/></svg>
@@ -210,6 +227,18 @@
     <div class="title">Weather</div>
     <arcgis-weather id="weather"></arcgis-weather>
     <div class="note">Weather is shown when the camera is close to the ground.</div>
+  </section>
+
+  <section id="daylightPanel" class="panel" hidden aria-label="Date and time">
+    <div class="title">Date &amp; time</div>
+    <label for="lightingDate">Date (UTC)
+      <input id="lightingDate" type="date" required />
+    </label>
+    <label for="lightingTime">Time (UTC)
+      <input id="lightingTime" type="time" step="60" required />
+    </label>
+    <button id="useCurrentTime" type="button">Use current time</button>
+    <div class="note">Stage lighting follows the design by default. Choose a date and time or use the current time to override it.</div>
   </section>
 
   <div id="loader"><div style="text-align:center"><div id="loaderText">Loading scene</div><div class="bar"></div></div></div>
@@ -244,7 +273,7 @@
       "@arcgis/core/layers/support/SceneModifications.js"
     ]);
 
-    // Google Map Tiles API key for the Photorealistic 3D Tiles in stage 05.
+    // Google Map Tiles API key for the Photorealistic 3D Tiles basemap.
     // Restrict it in Google Cloud Console to this site's HTTP referrer and the Map Tiles API.
     const GOOGLE_MAPS_KEY = "AIzaSyAkpf_G6xxV2vi6Y7po1ZA5MT1mXqRHifQ";
 
@@ -1052,8 +1081,8 @@
 
     // ------------------------------------------------------------------
     // Google Photorealistic 3D Tiles as a basemap (Basemap.groundLayers, 5.x).
-    // It is listed in the basemap gallery and selected automatically for
-    // stage 05. The mesh replaces the terrain, so the plot is flattened with a
+    // It is listed in the basemap gallery. The mesh replaces the terrain, so
+    // the plot is flattened with a
     // "replace" modification and the house is lifted onto Google's ground;
     // both heights are measured on screen once the tiles have loaded, so the
     // fit holds whatever vertical datum the tiles use.
@@ -1076,7 +1105,7 @@
     const googleBasemap = new Basemap({ id: "google-3d", title: "Google Photorealistic 3D", thumbnailUrl: googleThumb, groundLayers: [googleMesh] });
     const isGoogle = () => map.basemap?.id === "google-3d";
 
-    const google = { houseDz: 0, fitted: false, step: 0, prevBasemap: null, auto: false, busy: false };
+    const google = { houseDz: 0, fitted: false, step: 0, busy: false };
     // Shift every absolutely placed layer of the house by dz (draped layers follow the ground by themselves).
     function setHouseOffset(dz) {
       if (google.houseDz === dz) return;
@@ -1128,45 +1157,16 @@
     setInterval(() => {
       if (isGoogle() && googleMesh.loadStatus === "failed") {        // e.g. key rejected or offline: fall back
         console.warn("Google 3D Tiles unavailable; switching back to the previous basemap.", googleMesh.loadError);
-        map.basemap = google.prevBasemap && google.prevBasemap.id !== "google-3d" ? google.prevBasemap : Basemap.fromId("satellite");
-        google.auto = false;
+        map.basemap = Basemap.fromId("satellite");
       } else if (isGoogle()) fitToGoogle();
       else if (google.houseDz !== 0) { setHouseOffset(0); google.fitted = false; google.step = 0; }
     }, 1500);
-
-    // Stage 05 camera: this high above the site, looking at the house. Set `scale` (e.g. 25000)
-    // instead of relying on `tilt` to frame by map scale; the tilt is then derived from height and scale.
-    const CONTEXT_VIEW = { height: 500, tilt: 55, scale: null, heading: 36 };
-    function contextCamera() {
-      let dist, tilt = CONTEXT_VIEW.tilt;
-      if (CONTEXT_VIEW.scale) {
-        const now = orbitFromView();
-        const k = view.scale / Math.max(1, now.dist);                  // map scale per metre of viewing distance
-        dist = Math.max(CONTEXT_VIEW.height, CONTEXT_VIEW.scale / k);
-        tilt = Math.acos(Math.min(1, CONTEXT_VIEW.height / dist)) * 180 / Math.PI;
-      } else {
-        dist = CONTEXT_VIEW.height / Math.cos(tilt * Math.PI / 180);
-      }
-      return { target: [0, 0, PIVOT_Z + google.houseDz], heading: CONTEXT_VIEW.heading, tilt, dist };
-    }
-    function enterContext() {
-      if (!isGoogle()) { google.prevBasemap = map.basemap; map.basemap = googleBasemap; google.auto = true; }
-      toggleAutoOrbit(false);
-      flyTo(contextCamera(), 6000);
-    }
-    function leaveContext() {
-      if (google.auto && isGoogle() && google.prevBasemap) map.basemap = google.prevBasemap;
-      google.auto = false;
-      toggleAutoOrbit(false);
-      flyTo(HOME, 5000);
-    }
 
     // ------------------------------------------------------------------
     // Stage morph
     // ------------------------------------------------------------------
     function sunDate(t) {
       // 21 September on site: early afternoon for the model stages, sinking to a low golden sun (≈18:50 BST) for the finish.
-      // The context stage keeps the same evening light as the finish.
       const minutes = lerp(13 * 60 + 20, 17 * 60 + 50, smooth(2.0, 3.0, t));
       return new Date(Date.UTC(2025, 8, 21, 0, Math.round(minutes)));
     }
@@ -1188,10 +1188,19 @@
     };
     massGraphic.baseMesh = massMesh; furnWhiteGraphic.baseMesh = furnWhiteMesh;
 
-    const GROUND = [[245, 242, 235], [226, 226, 222], [222, 223, 220], [76, 96, 58], [76, 96, 58]];
+    const GROUND = [[245, 242, 235], [226, 226, 222], [222, 223, 220], [76, 96, 58]];
     const colorAt = (stops, t) => { const i = Math.min(stops.length - 2, Math.floor(t)); return lerpColor(stops[i], stops[i + 1], smooth(0, 1, t - i)); };
 
     let lastApplied = { bg: "", ground: "", minutes: -1 };
+    let manualLighting = false;
+    function syncLightingInputs(date) {
+      const value = date.toISOString();
+      const dateInput = document.getElementById("lightingDate");
+      const timeInput = document.getElementById("lightingTime");
+      const dateValue = value.slice(0, 10), timeValue = value.slice(11, 16);
+      if (dateInput.value !== dateValue) dateInput.value = dateValue;
+      if (timeInput.value !== timeValue) timeInput.value = timeValue;
+    }
     function applyStage(t) {
       const out = (a, b) => 1 - smooth(a, b, t);
       setOpacity(L_sketch, out(0.5, 1.0));
@@ -1239,24 +1248,35 @@
       const gr = colorAt(GROUND, t);
       if (gr.join() !== lastApplied.ground) { map.ground.surfaceColor = gr; lastApplied.ground = gr.join(); }
       const d = sunDate(t);
-      if (d.getTime() !== lastApplied.minutes) { view.environment.lighting.date = d; lastApplied.minutes = d.getTime(); }
+      if (!manualLighting && d.getTime() !== lastApplied.minutes) {
+        view.environment.lighting.date = d;
+        lastApplied.minutes = d.getTime();
+        syncLightingInputs(d);
+      }
     }
 
     // ------------------------------------------------------------------
     // UI
     // ------------------------------------------------------------------
-    const LAST = 4;   // index of the final stage (five stages: 0–4)
+    const LAST = 3;   // index of the final stage (four stages: 0–3)
     const STAGES = [
       ["Sketch", "Loose pencil linework sets out the parti: a raised plinth, three wings wrapped around a courtyard pool, and one cantilevered volume above."],
       ["Massing", "Solid white volumes rise from the plinth to test proportion, shadow and the carved-out void of the courtyard."],
       ["Detail", "Glazing, mullions, interior walls and furniture arrive, resolving how each room opens to the courtyard."],
-      ["Finish", "Limestone, charred timber, teak and water, landscaped and lit under a low evening sun."],
-      ["Context", "The finished house set into its real surroundings with Google Photorealistic 3D Tiles, under the same evening light."]
+      ["Finish", "Limestone, charred timber, teak and water, landscaped and lit under a low evening sun."]
     ];
     const $ = (id) => document.getElementById(id);
     const range = $("range"), thumb = $("thumb"), fill = $("fill"), ticks = [...document.querySelectorAll(".tick")];
     const stageBtns = [...document.querySelectorAll("#stages button")];
     let current = 0, target = 0, shownStage = -1;
+    const caption = $("caption"), captionToggle = $("captionToggle");
+    captionToggle.addEventListener("click", () => {
+      const expanded = captionToggle.getAttribute("aria-expanded") === "true";
+      caption.classList.toggle("collapsed", expanded);
+      captionToggle.setAttribute("aria-expanded", String(!expanded));
+      captionToggle.setAttribute("aria-label", expanded ? "Expand stage information" : "Collapse stage information");
+      captionToggle.title = expanded ? "Expand stage information" : "Collapse stage information";
+    });
 
     function updateUI(t) {
       const pct = (t / LAST) * 100;
@@ -1265,10 +1285,7 @@
       ticks.forEach((el, i) => el.classList.toggle("on", t >= i - 0.02));
       const s = Math.min(LAST, Math.max(0, Math.round(t)));
       if (s !== shownStage) {
-        const prev = shownStage;
         shownStage = s;
-        if (prev !== -1 && s === LAST && prev !== LAST) enterContext();   // stage 05: Google basemap + context view
-        else if (prev === LAST && s !== LAST) leaveContext();
         stageBtns.forEach((b, i) => { b.classList.toggle("active", i === s); b.setAttribute("aria-selected", i === s); });
         $("stageNum").textContent = String(s + 1).padStart(2, "0");
         $("stageName").textContent = STAGES[s][0];
@@ -1297,19 +1314,42 @@
     function stopPlay() { if (playing) setPlay(false); }
     playBtn.addEventListener("click", () => setPlay(!playing));
 
-    const contextLoading = $("contextLoading");
+    const googleLoading = $("googleLoading");
     const basemapBtn = $("basemapBtn"), basemapPanel = $("basemapPanel");
     const weatherBtn = $("weatherBtn"), weatherPanel = $("weatherPanel");
+    const daylightBtn = $("daylightBtn"), daylightPanel = $("daylightPanel");
     function toggleBasemapPanel(on = basemapPanel.hidden) {
       basemapPanel.hidden = !on; basemapBtn.setAttribute("aria-pressed", on);
-      if (on) toggleWeatherPanel(false);
+      if (on) { toggleWeatherPanel(false); toggleDaylightPanel(false); }
     }
     function toggleWeatherPanel(on = weatherPanel.hidden) {
       weatherPanel.hidden = !on; weatherBtn.setAttribute("aria-pressed", on);
-      if (on) toggleBasemapPanel(false);
+      if (on) { toggleBasemapPanel(false); toggleDaylightPanel(false); }
+    }
+    function toggleDaylightPanel(on = daylightPanel.hidden) {
+      daylightPanel.hidden = !on; daylightBtn.setAttribute("aria-pressed", on);
+      if (on) { toggleBasemapPanel(false); toggleWeatherPanel(false); }
     }
     basemapBtn.addEventListener("click", () => toggleBasemapPanel());
     weatherBtn.addEventListener("click", () => toggleWeatherPanel());
+    daylightBtn.addEventListener("click", () => toggleDaylightPanel());
+    for (const id of ["lightingDate", "lightingTime"]) {
+      $(id).addEventListener("change", () => {
+        const date = new Date(`${$("lightingDate").value}T${$("lightingTime").value}:00Z`);
+        if (Number.isNaN(date.getTime())) return;
+        manualLighting = true;
+        view.environment.lighting.date = date;
+        lastApplied.minutes = date.getTime();
+      });
+    }
+    $("useCurrentTime").addEventListener("click", () => {
+      const date = new Date();
+      date.setSeconds(0, 0);
+      manualLighting = true;
+      view.environment.lighting.date = date;
+      lastApplied.minutes = date.getTime();
+      syncLightingInputs(date);
+    });
     customElements.whenDefined("arcgis-weather").then(() => { $("weather").view = view; });
     customElements.whenDefined("arcgis-basemap-gallery").then(() => {
       const gallery = $("gallery");
@@ -1331,14 +1371,15 @@
 
     window.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT" && e.key.startsWith("Arrow")) return;
-      if (basemapPanel.contains(e.target) || weatherPanel.contains(e.target)) return;
-      if (/^[1-5]$/.test(e.key)) { stopPlay(); target = +e.key - 1; }
+      if (basemapPanel.contains(e.target) || weatherPanel.contains(e.target) || daylightPanel.contains(e.target)) return;
+      if (/^[1-4]$/.test(e.key)) { stopPlay(); target = +e.key - 1; }
       else if (e.key === " ") { e.preventDefault(); setPlay(!playing); }
       else if (e.key === "]") { stopPlay(); target = Math.min(LAST, Math.floor(target + 1.001)); }
       else if (e.key === "[") { stopPlay(); target = Math.max(0, Math.ceil(target - 1.001)); }
       else if (e.key === "o") toggleAutoOrbit();
       else if (e.key === "b") toggleBasemapPanel();
       else if (e.key === "w") toggleWeatherPanel();
+      else if (e.key === "d") toggleDaylightPanel();
     });
 
 
@@ -1369,9 +1410,9 @@
         if (n !== drawn) { drawn = n; sketchGraphic.geometry = new Polyline({ paths: toMapPaths(sketchPaths.slice(0, n)), hasZ: true, spatialReference: SR }); }
       }
 
-      // "Loading 3D context…" while the Google tiles stream in on stage 05
-      const loadingCtx = isGoogle() && googleMesh.loadStatus !== "failed" && (view.updating || !google.fitted);
-      if (contextLoading.hidden === loadingCtx) contextLoading.hidden = !loadingCtx;
+      // Show a loading cue while the Google 3D tiles basemap streams in.
+      const loading = isGoogle() && googleMesh.loadStatus !== "failed" && (view.updating || !google.fitted);
+      if (googleLoading.hidden === loading) googleLoading.hidden = !loading;
       if (autoOrbit && orbit) setCam({ ...orbit, heading: orbit.heading + dt * 3.5 });
       requestAnimationFrame(frame);
     }
