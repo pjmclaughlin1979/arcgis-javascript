@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Stormont Parliament Buildings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://js.arcgis.com/5.1/esri/themes/light/main.css" />
+  <script type="module" src="https://js.arcgis.com/5.1/"></script>
+  <style>
+    :root {
+      --ink: #1d222b;
+      --muted: #6b7280;
+      --panel: rgba(255, 255, 255, 0.84);
+      --panel-line: rgba(29, 34, 43, 0.08);
+      --accent: #2f5d8a;
+      --track: rgba(29, 34, 43, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #f4f1ea; }
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+    #view { position: absolute; inset: 0; outline: none; }
+
+    .panel {
+      background: var(--panel);
+      backdrop-filter: blur(14px) saturate(140%);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      border: 1px solid var(--panel-line);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(20, 24, 32, 0.12);
+    }
+
+    #caption { position: absolute; top: 20px; left: 20px; width: 350px; max-width: calc(100vw - 32px); padding: 18px 20px; }
+    #captionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    #caption .eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+    #caption h1 { font-size: 20px; line-height: 1.2; margin: 6px 0 14px; font-weight: 700; letter-spacing: -.01em; }
+    #captionToggle { flex: none; width: 32px; height: 32px; margin: -4px -6px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+    #captionToggle:hover { background: rgba(29, 34, 43, 0.06); color: var(--ink); }
+    #captionToggle:focus-visible { outline: 3px solid rgba(47, 93, 138, .45); outline-offset: 2px; }
+    #captionToggle svg { width: 18px; height: 18px; transition: transform .2s; }
+    #caption.collapsed #captionToggle svg { transform: rotate(180deg); }
+    #caption.collapsed #captionDetails { display: none; }
+    #caption .stage-row { display: flex; align-items: baseline; gap: 10px; }
+    #stageNum { font-size: 34px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--accent); }
+    #stageName { font-size: 17px; font-weight: 600; }
+    #stageDesc { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: #454b55; min-height: 4.5em; transition: opacity .35s ease; }
+    #controlsHelp { margin: 10px 0 0; font-size: 12px; color: #454b55; line-height: 1.7; }
+    #controlsHelp b { color: var(--ink); font-weight: 600; }
+    #caption .coords { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--panel-line); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    #caption .coords svg { width: 14px; height: 14px; flex: none; }
+
+    #dock {
+      position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+      width: min(760px, calc(100vw - 32px));
+      padding: 14px 16px 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
+    }
+    .btn {
+      appearance: none; border: 1px solid var(--panel-line); background: #fff; color: var(--ink);
+      width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; cursor: pointer;
+      transition: background .2s, color .2s, transform .1s, border-color .2s;
+    }
+    .btn:hover { border-color: rgba(29, 34, 43, 0.25); }
+    .btn:active { transform: scale(.96); }
+    .btn:focus-visible { outline: 3px solid rgba(47, 93, 138, .45); outline-offset: 2px; }
+    .btn[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .btn svg { width: 18px; height: 18px; }
+    .tools { display: flex; gap: 8px; }
+
+    #scrub { position: relative; padding-top: 2px; }
+    #stages { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 -6px 6px; }
+    #stages button {
+      appearance: none; border: 0; background: none; cursor: pointer; font: inherit; color: var(--muted);
+      font-size: 12.5px; font-weight: 600; padding: 4px 6px; text-align: center; border-radius: 8px; transition: color .25s;
+    }
+    #stages button:first-child { text-align: left; }
+    #stages button:last-child { text-align: right; }
+    #stages button span { font-variant-numeric: tabular-nums; opacity: .6; margin-right: 4px; }
+    #stages button.active, #stages button:hover { color: var(--ink); }
+    #stages button:focus-visible { outline: 3px solid rgba(47, 93, 138, .45); }
+
+    #rangeWrap { position: relative; height: 22px; }
+    #track { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 4px; background: var(--track); overflow: hidden; }
+    #fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #8a93a3, #1d222b 45%, var(--accent)); border-radius: 4px; }
+    .tick { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff; border: 2px solid #b8bec8; pointer-events: none; transition: border-color .25s, background .25s; }
+    .tick.on { border-color: var(--ink); background: var(--ink); }
+    #range { position: absolute; inset: 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }
+    #thumb { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: #fff; border: 2px solid var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,.2); pointer-events: none; }
+    #range:focus-visible + #thumb { outline: 3px solid rgba(47, 93, 138, .45); outline-offset: 2px; }
+
+    #navTools { position: absolute; right: 20px; top: 20px; display: flex; flex-direction: column; gap: 8px; filter: drop-shadow(0 4px 12px rgba(20, 24, 32, 0.14)); }
+
+    #loader {
+      position: absolute; inset: 0; display: grid; place-items: center; background: #f4f1ea; z-index: 10;
+      transition: opacity .8s ease; font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase;
+    }
+    #loader.gone { opacity: 0; pointer-events: none; }
+    #loader .bar { width: 160px; height: 2px; background: var(--track); margin-top: 14px; overflow: hidden; border-radius: 2px; }
+    #loader .bar::after { content: ""; display: block; width: 40%; height: 100%; background: var(--ink); animation: load 1.1s ease-in-out infinite; }
+    @keyframes load { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+    #loader.error .bar { display: none; }
+
+    @media (max-width: 720px) {
+      #caption { top: 12px; left: 12px; padding: 14px 16px; width: calc(100vw - 88px); }
+      #caption h1 { font-size: 17px; margin-bottom: 8px; }
+      #stageNum { font-size: 26px; }
+      #stageDesc { font-size: 12.5px; min-height: 0; }
+      #controlsHelp { display: none; }
+      #navTools { right: 12px; top: 12px; }
+      #dock { bottom: 12px; grid-template-columns: auto 1fr auto; gap: 10px; }
+      #scrub { grid-column: 1 / -1; order: -1; }
+      #dock .tools:last-child { grid-column: 3; }
+      #stages button { font-size: 11px; }
+      #stages button span { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="view" tabindex="0" aria-label="3D view of the Parliament Buildings at Stormont"></div>
+
+  <section id="caption" class="panel" aria-live="polite">
+    <div id="captionHeader">
+      <div>
+        <div class="eyebrow">Stormont Estate · Belfast</div>
+        <h1>Parliament Buildings</h1>
+      </div>
+      <button id="captionToggle" type="button" aria-expanded="true" aria-controls="captionDetails" aria-label="Collapse stage information" title="Collapse stage information">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </div>
+    <div id="captionDetails">
+      <div class="stage-row"><div id="stageNum">01</div><div id="stageName">Sketch</div></div>
+      <p id="stageDesc"></p>
+      <p id="controlsHelp"><b>Drag</b> orbit · <b>Right-drag</b> pan · <b>Scroll</b> zoom<br><b>1–4</b> stages · <b>Space</b> play · <b>O</b> auto-orbit · <b>R</b> reset</p>
+      <div class="coords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>54.6050° N, 5.8319° W · schematic model</div>
+    </div>
+  </section>
+
+  <div id="navTools" aria-label="Map navigation">
+    <arcgis-zoom id="navZoom"></arcgis-zoom>
+    <arcgis-navigation-toggle id="navToggle" navigation-mode="rotate"></arcgis-navigation-toggle>
+    <arcgis-compass id="navCompass"></arcgis-compass>
+  </div>
+
+  <section id="dock" class="panel">
+    <div class="tools">
+      <button id="play" class="btn" aria-pressed="false" title="Play through the stages (Space)" aria-label="Play">
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+      </button>
+    </div>
+    <div id="scrub">
+      <div id="stages" role="tablist" aria-label="Stages">
+        <button data-stage="0" class="active" role="tab"><span>01</span>Sketch</button>
+        <button data-stage="1" role="tab"><span>02</span>Massing</button>
+        <button data-stage="2" role="tab"><span>03</span>Detail</button>
+        <button data-stage="3" role="tab"><span>04</span>Finish</button>
+      </div>
+      <div id="rangeWrap">
+        <div id="track"><div id="fill"></div></div>
+        <div class="tick" style="left:0%"></div>
+        <div class="tick" style="left:33.333%"></div>
+        <div class="tick" style="left:66.667%"></div>
+        <div class="tick" style="left:100%"></div>
+        <input id="range" type="range" min="0" max="3000" step="1" value="0" aria-label="Stage scrubber" />
+        <div id="thumb"></div>
+      </div>
+    </div>
+    <div class="tools">
+      <button id="orbit" class="btn" aria-pressed="false" title="Auto-orbit (O)" aria-label="Auto-orbit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 4 0 1 1-4.5-3.46"/><path d="M17 5.5l-.5 3 3 .5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
+      </button>
+      <button id="reset" class="btn" title="Reset view (R)" aria-label="Reset view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66"/><path d="M4 4v4h4"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <div id="loader"><div style="text-align:center"><div id="loaderText">Loading scene</div><div class="bar"></div></div></div>
+
+  <script type="module">
+    const [
+      Map, SceneView, Graphic, GraphicsLayer, Mesh, MeshComponent, MeshMaterialMetallicRoughness,
+      MeshTexture, MeshLocalVertexSpace, MeshTransform, Point, Polyline, Polygon, SpatialReference, Camera, WebStyleSymbol
+    ] = await $arcgis.import([
+      "@arcgis/core/Map.js",
+      "@arcgis/core/views/SceneView.js",
+      "@arcgis/core/Graphic.js",
+      "@arcgis/core/layers/GraphicsLayer.js",
+      "@arcgis/core/geometry/Mesh.js",
+      "@arcgis/core/geometry/support/MeshComponent.js",
+      "@arcgis/core/geometry/support/MeshMaterialMetallicRoughness.js",
+      "@arcgis/core/geometry/support/MeshTexture.js",
+      "@arcgis/core/geometry/support/MeshLocalVertexSpace.js",
+      "@arcgis/core/geometry/support/MeshTransform.js",
+      "@arcgis/core/geometry/Point.js",
+      "@arcgis/core/geometry/Polyline.js",
+      "@arcgis/core/geometry/Polygon.js",
+      "@arcgis/core/geometry/SpatialReference.js",
+      "@arcgis/core/Camera.js",
+      "@arcgis/core/symbols/WebStyleSymbol.js"
+    ]);
+
+    // ------------------------------------------------------------------
+    // Site frame. Everything is authored in metres in a local frame centred
+    // on the building (x east, y north, z up); the ground is flat at z = 0.
+    // The building faces west down Prince of Wales Avenue. Dimensions follow
+    // the published figures (365 ft x 164 ft, about 21 m to the parapet);
+    // the plan and elevations are a simplified reading of the design.
+    // ------------------------------------------------------------------
+    const SR = SpatialReference.WebMercator;
+    const SITE = { lon: -5.83188, lat: 54.60502 };
+    const R_EARTH = 6378137;
+    const X0 = (SITE.lon * Math.PI / 180) * R_EARTH;
+    const Y0 = Math.log(Math.tan(Math.PI / 4 + (SITE.lat * Math.PI / 180) / 2)) * R_EARTH;
+    const K = 1 / Math.cos(SITE.lat * Math.PI / 180);      // metres -> Web Mercator units
+    const P = (x, y, z = 0) => [X0 + x * K, Y0 + y * K, z];
+    const toLocal = (pt) => {
+      let { x, y } = pt;
+      if (pt.spatialReference?.isWGS84) { x = (pt.longitude * Math.PI / 180) * R_EARTH; y = Math.log(Math.tan(Math.PI / 4 + (pt.latitude * Math.PI / 180) / 2)) * R_EARTH; }
+      return [(x - X0) / K, (y - Y0) / K, pt.z ?? 0];
+    };
+
+    // Levels
+    const Z0 = 2.4;    // terrace / ground floor
+    const Z1 = 8.2;    // principal floor
+    const Z2 = 14.8;   // upper floor
+    const ZR = 19.6;   // roof slab / cornice base
+    const ZC = 20.8;   // top of cornice
+    const ZP = 22.0;   // top of balustrade
+    const ZA = 24.4;   // top of the central attic
+    const TH = 0.6;    // external wall thickness
+
+    function rng(seed) {
+      return () => {
+        seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const lerpColor = (c1, c2, t) => c1.map((v, i) => Math.round(lerp(v, c2[i], t)));
+    const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+
+    // ------------------------------------------------------------------
+    // Procedural textures for the finished materials
+    // ------------------------------------------------------------------
+    function canvasTex(size, draw) {
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      draw(c.getContext("2d", { willReadFrequently: true }), size);
+      return c;
+    }
+    function noise(ctx, s, amount, seed) {
+      const img = ctx.getImageData(0, 0, s, s), d = img.data, r = rng(seed);
+      for (let i = 0; i < d.length; i += 4) { const n = (r() - 0.5) * amount; d[i] += n; d[i + 1] += n; d[i + 2] += n; d[i + 3] = 255; }
+      ctx.putImageData(img, 0, 0);
+    }
+    function ashlar(base, rows, cols, seed, groove, grooveAlpha) {
+      return (ctx, s) => {
+        const r = rng(seed), h = s / rows;
+        ctx.fillStyle = `rgb(${base})`; ctx.fillRect(0, 0, s, s);
+        for (let i = 0; i < rows; i++) {
+          const off = i % 2 ? s / cols / 2 : 0;
+          for (let j = -1; j <= cols; j++) {
+            const sh = (r() - 0.5) * 16;
+            ctx.fillStyle = `rgb(${base.map(v => v + sh).join(",")})`;
+            ctx.fillRect(off + j * s / cols, i * h, s / cols, h);
+            ctx.fillStyle = `rgba(80,72,60,${grooveAlpha * 0.8})`;
+            ctx.fillRect(off + j * s / cols, i * h, Math.max(2, groove / 2), h);
+          }
+          ctx.fillStyle = `rgba(70,62,50,${grooveAlpha})`; ctx.fillRect(0, i * h, s, groove);
+          ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(0, i * h + groove, s, 2);
+        }
+        for (let k = 0; k < 1400; k++) { ctx.fillStyle = `rgba(110,100,85,${r() * 0.12})`; ctx.beginPath(); ctx.arc(r() * s, r() * s, r() * 1.8, 0, 7); ctx.fill(); }
+        // weathering streaks
+        for (let k = 0; k < 40; k++) { ctx.fillStyle = `rgba(90,85,75,${r() * 0.05})`; ctx.fillRect(r() * s, r() * s, 1 + r() * 3, s * r() * 0.4); }
+        noise(ctx, s, 12, seed + 1);
+      };
+    }
+    function planks(base, count, seed) {
+      return (ctx, s) => {
+        const r = rng(seed), w = s / count;
+        for (let i = 0; i < count; i++) {
+          const sh = (r() - 0.5) * 22;
+          ctx.fillStyle = `rgb(${base.map(v => Math.max(0, Math.min(255, v + sh))).join(",")})`; ctx.fillRect(0, i * w, s, w);
+          for (let k = 0; k < 16; k++) { ctx.fillStyle = `rgba(0,0,0,${0.03 + r() * 0.05})`; ctx.fillRect(r() * s, i * w + r() * w, s * (0.3 + r() * 0.7), 1); }
+          ctx.fillStyle = "rgba(60,40,20,.35)"; ctx.fillRect(0, i * w, s, 1);
+        }
+        noise(ctx, s, 20, seed + 1);
+      };
+    }
+    const TEX = {
+      stone: canvasTex(512, ashlar([228, 224, 212], 4, 2, 7, 2, 0.16)),
+      stonePlain: canvasTex(256, (ctx, s) => { ctx.fillStyle = "rgb(228,224,212)"; ctx.fillRect(0, 0, s, s); noise(ctx, s, 14, 61); }),
+      rustic: canvasTex(512, ashlar([218, 213, 199], 4, 1, 17, 9, 0.45)),
+      granite: canvasTex(256, (ctx, s) => {
+        ctx.fillStyle = "#8e8784"; ctx.fillRect(0, 0, s, s);
+        const r = rng(3);
+        for (let k = 0; k < 5000; k++) {
+          const c = r() < 0.45 ? [60, 58, 58] : r() < 0.6 ? [190, 160, 150] : [205, 200, 196];
+          ctx.fillStyle = `rgba(${c},${0.3 + r() * 0.5})`; ctx.fillRect(r() * s, r() * s, 1 + r() * 2.5, 1 + r() * 2.5);
+        }
+        ctx.fillStyle = "rgba(40,36,34,.45)"; ctx.fillRect(0, 0, s, 2); ctx.fillRect(0, s / 2, s, 2); ctx.fillRect(0, 0, 2, s / 2); ctx.fillRect(s / 2, s / 2, 2, s / 2);
+      }),
+      lead: canvasTex(256, (ctx, s) => {
+        ctx.fillStyle = "#6f777c"; ctx.fillRect(0, 0, s, s);
+        const r = rng(9);
+        for (let i = 0; i < 4; i++) {
+          const sh = (r() - 0.5) * 12; ctx.fillStyle = `rgb(${111 + sh},${119 + sh},${124 + sh})`; ctx.fillRect(i * s / 4, 0, s / 4, s);
+          ctx.fillStyle = "rgba(255,255,255,.22)"; ctx.fillRect(i * s / 4, 0, 3, s);
+          ctx.fillStyle = "rgba(0,0,0,.28)"; ctx.fillRect(i * s / 4 + 3, 0, 2, s);
+        }
+        noise(ctx, s, 18, 10);
+      }),
+      oak: canvasTex(256, planks([172, 130, 86], 8, 31)),
+      carpet: canvasTex(128, (ctx, s) => { ctx.fillStyle = "#34456a"; ctx.fillRect(0, 0, s, s); noise(ctx, s, 26, 41); }),
+      marble: canvasTex(256, (ctx, s) => {
+        ctx.fillStyle = "#e6ddcc"; ctx.fillRect(0, 0, s, s);
+        const r = rng(51);
+        ctx.strokeStyle = "rgba(150,130,105,.25)";
+        for (let k = 0; k < 20; k++) { ctx.lineWidth = r() * 2; ctx.beginPath(); ctx.moveTo(r() * s, 0); ctx.bezierCurveTo(r() * s, s / 3, r() * s, s * 2 / 3, r() * s, s); ctx.stroke(); }
+        ctx.fillStyle = "rgba(120,100,80,.35)"; ctx.fillRect(0, 0, s, 1); ctx.fillRect(0, 0, 1, s);
+        noise(ctx, s, 8, 52);
+      })
+    };
+
+    // ------------------------------------------------------------------
+    // Materials: [material, texture repeat size in metres]
+    // ------------------------------------------------------------------
+    const mat = (o) => new MeshMaterialMetallicRoughness(Object.assign({ metallic: 0, roughness: 0.85, doubleSided: true }, o));
+    const texMat = (tex, o = {}) => mat(Object.assign({ colorTexture: new MeshTexture({ data: tex, wrap: "repeat" }) }, o));
+    const glassMat = (color, o = {}) => mat(Object.assign({ color, alphaMode: "blend", metallic: 0.2, roughness: 0.08 }, o));
+    const emissive = (rgb, strength) => mat({ color: rgb, emissiveColor: rgb, emissiveStrength: strength, roughness: 1 });
+    const M = {
+      white:      [mat({ color: [246, 246, 243] }), 1],
+      whiteWarm:  [mat({ color: [238, 236, 230] }), 1],
+      floorWhite: [mat({ color: [206, 207, 204] }), 1],
+      frameGrey:  [mat({ color: [160, 165, 172], roughness: 0.6 }), 1],
+      glassWhite: [glassMat([190, 216, 236, 0.4]), 1],
+      treeWhite:  [mat({ color: [250, 250, 248] }), 1],
+
+      stone:   [texMat(TEX.stone, { roughness: 0.92 }), 2.4],
+      stonePlain: [texMat(TEX.stonePlain, { roughness: 0.9 }), 3],
+      rustic:  [texMat(TEX.rustic, { roughness: 0.95 }), 2.4],
+      granite: [texMat(TEX.granite, { roughness: 0.8 }), 1.6],
+      lead:    [texMat(TEX.lead, { metallic: 0.3, roughness: 0.6 }), 2.2],
+      sash:    [mat({ color: [242, 242, 238], roughness: 0.5 }), 1],
+      glass:   [glassMat([74, 96, 114, 0.36], { metallic: 0.55, roughness: 0.05 }), 1],
+      door:    [mat({ color: [52, 40, 30], roughness: 0.55 }), 1],
+      carpet:  [texMat(TEX.carpet, { roughness: 1 }), 1.5],
+      oak:     [texMat(TEX.oak, { roughness: 0.55 }), 1.8],
+      marble:  [texMat(TEX.marble, { roughness: 0.3 }), 1.6],
+      plaster: [mat({ color: [236, 232, 222] }), 1],
+      black:   [mat({ color: [32, 33, 36], metallic: 0.3, roughness: 0.5 }), 1],
+      grey:    [mat({ color: [120, 124, 130], roughness: 0.6 }), 1],
+      leather: [mat({ color: [44, 70, 120], roughness: 0.55 }), 1],
+      bronze:  [mat({ color: [92, 74, 50], metallic: 0.8, roughness: 0.35 }), 1],
+      gold:    [mat({ color: [196, 160, 90], metallic: 0.9, roughness: 0.25 }), 1],
+      screen:  [emissive([150, 190, 240], 1.2), 1],
+      trunk:   [mat({ color: [92, 76, 60] }), 1],
+      leaf1:   [mat({ color: [72, 100, 50], roughness: 0.9 }), 1],
+      leaf2:   [mat({ color: [98, 124, 60], roughness: 0.9 }), 1],
+      leaf3:   [mat({ color: [52, 78, 48], roughness: 0.9 }), 1],
+      leaf4:   [mat({ color: [120, 128, 64], roughness: 0.9 }), 1],
+      carRed:    [mat({ color: [150, 28, 30], metallic: 0.5, roughness: 0.3 }), 1],
+      carBlue:   [mat({ color: [30, 58, 110], metallic: 0.5, roughness: 0.3 }), 1],
+      carSilver: [mat({ color: [178, 182, 186], metallic: 0.7, roughness: 0.3 }), 1],
+      carBlack:  [mat({ color: [26, 27, 30], metallic: 0.5, roughness: 0.3 }), 1],
+      carWhite:  [mat({ color: [236, 236, 234], metallic: 0.3, roughness: 0.3 }), 1],
+      carGreen:  [mat({ color: [40, 70, 58], metallic: 0.5, roughness: 0.3 }), 1],
+      carGlass:  [mat({ color: [36, 44, 52], metallic: 0.6, roughness: 0.1 }), 1],
+      tyre:      [mat({ color: [22, 22, 22], roughness: 0.9 }), 1],
+      lightWarm:  [emissive([255, 212, 150], 2.4), 1],
+      lightOffice:[emissive([255, 240, 214], 1.7), 1],
+      lightCool:  [emissive([235, 242, 255], 2.2), 1]
+    };
+
+    // ------------------------------------------------------------------
+    // Geometry builder: flat-shaded primitives with world-scaled UVs
+    // ------------------------------------------------------------------
+    class Geo {
+      constructor(uvSize = 1) { this.p = []; this.n = []; this.uv = []; this.f = []; this.s = uvSize; }
+      get count() { return this.p.length / 3; }
+      quad(v, nrm, uvs) {
+        const b = this.count;
+        for (let i = 0; i < 4; i++) { this.p.push(...v[i]); this.n.push(...nrm); this.uv.push(uvs[i][0] / this.s, uvs[i][1] / this.s); }
+        this.f.push(b, b + 1, b + 2, b, b + 2, b + 3);
+      }
+      tri(a, b, c) {
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+        const l = Math.hypot(...n) || 1; n = n.map(x => x / l);
+        const base = this.count, vert = Math.abs(n[2]) < 0.7;
+        for (const v of [a, b, c]) {
+          this.p.push(...v); this.n.push(...n);
+          // vertical faces: u along the face, v = height; horizontal faces: plan coordinates
+          if (vert) this.uv.push((Math.abs(n[0]) > Math.abs(n[1]) ? v[1] : v[0]) / this.s, v[2] / this.s);
+          else this.uv.push(v[0] / this.s, v[1] / this.s);
+        }
+        this.f.push(base, base + 1, base + 2);
+      }
+      box(x0, x1, y0, y1, z0, z1) {
+        if (x1 < x0) [x0, x1] = [x1, x0];
+        if (y1 < y0) [y0, y1] = [y1, y0];
+        if (z1 < z0) [z0, z1] = [z1, z0];
+        this.quad([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], [0, 0, 1], [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
+        this.quad([[x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]], [0, 0, -1], [[x0, y0], [x0, y1], [x1, y1], [x1, y0]]);
+        this.quad([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], [1, 0, 0], [[y0, z0], [y1, z0], [y1, z1], [y0, z1]]);
+        this.quad([[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], [-1, 0, 0], [[y0, z0], [y0, z1], [y1, z1], [y1, z0]]);
+        this.quad([[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]], [0, 1, 0], [[x0, z0], [x0, z1], [x1, z1], [x1, z0]]);
+        this.quad([[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [0, -1, 0], [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]);
+      }
+      // box rotated about z: centre, length (along angle), width, heights, angle in radians
+      obox(cx, cy, len, wid, z0, z1, ang) {
+        const c = Math.cos(ang), s = Math.sin(ang);
+        const pt = (u, v, z) => [cx + u * c - v * s, cy + u * s + v * c, z];
+        const b = [[-len / 2, -wid / 2], [len / 2, -wid / 2], [len / 2, wid / 2], [-len / 2, wid / 2]];
+        const lo = b.map(([u, v]) => pt(u, v, z0)), hi = b.map(([u, v]) => pt(u, v, z1));
+        this.tri(hi[0], hi[1], hi[2]); this.tri(hi[0], hi[2], hi[3]);
+        this.tri(lo[0], lo[3], lo[2]); this.tri(lo[0], lo[2], lo[1]);
+        for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; this.tri(lo[i], lo[j], hi[j]); this.tri(lo[i], hi[j], hi[i]); }
+      }
+      cylinder(cx, cy, z0, z1, r0, r1 = r0, seg = 10) {
+        for (let i = 0; i < seg; i++) {
+          const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+          const p = (a, r, z) => [cx + Math.cos(a) * r, cy + Math.sin(a) * r, z];
+          this.tri(p(a0, r0, z0), p(a1, r0, z0), p(a1, r1, z1));
+          this.tri(p(a0, r0, z0), p(a1, r1, z1), p(a0, r1, z1));
+          if (r1 > 0) this.tri([cx, cy, z1], p(a0, r1, z1), p(a1, r1, z1));
+        }
+      }
+      // triangular prism along x (a pediment): ridge at the middle of y0..y1
+      prism(x0, x1, y0, y1, z0, z1) {
+        const ym = (y0 + y1) / 2;
+        this.tri([x0, y0, z0], [x0, ym, z1], [x0, y1, z0]);
+        this.tri([x1, y0, z0], [x1, y1, z0], [x1, ym, z1]);
+        this.tri([x0, y0, z0], [x1, y0, z0], [x1, ym, z1]); this.tri([x0, y0, z0], [x1, ym, z1], [x0, ym, z1]);
+        this.tri([x0, y1, z0], [x0, ym, z1], [x1, ym, z1]); this.tri([x0, y1, z0], [x1, ym, z1], [x1, y1, z0]);
+      }
+      blob(cx, cy, cz, rx, ry, rz, seed, jitter = 0.14) {
+        const t = (1 + Math.sqrt(5)) / 2;
+        const v = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]]
+          .map(p => { const l = Math.hypot(...p); return p.map(x => x / l); });
+        let faces = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+        const cache = {};
+        const mid = (a, b) => {
+          const k = a < b ? a + "_" + b : b + "_" + a;
+          if (cache[k] === undefined) { const m = v[a].map((x, i) => (x + v[b][i]) / 2), l = Math.hypot(...m); v.push(m.map(x => x / l)); cache[k] = v.length - 1; }
+          return cache[k];
+        };
+        faces = faces.flatMap(([a, b, c]) => { const ab = mid(a, b), bc = mid(b, c), ca = mid(c, a); return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]; });
+        const r = rng(seed);
+        const pts = v.map(p => { const j = 1 + (r() - 0.5) * 2 * jitter; return [cx + p[0] * rx * j, cy + p[1] * ry * j, cz + p[2] * rz * j]; });
+        for (const [a, b, c] of faces) this.tri(pts[a], pts[b], pts[c]);
+      }
+    }
+
+    function buildMesh(groups, origin = [0, 0, 0]) {
+      const list = Object.entries(groups).filter(([, g]) => g.f.length);
+      const nv = list.reduce((s, [, g]) => s + g.count, 0);
+      const pos = new Float64Array(nv * 3), nrm = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), comps = [];
+      let base = 0;
+      for (const [key, g] of list) {
+        for (let i = 0; i < g.p.length; i++) pos[base * 3 + i] = g.p[i] - origin[i % 3];
+        nrm.set(g.n, base * 3); uv.set(g.uv, base * 2);
+        const faces = new Uint32Array(g.f.length);
+        for (let i = 0; i < g.f.length; i++) faces[i] = g.f[i] + base;
+        comps.push(new MeshComponent({ faces, material: M[key][0], shading: "source" }));
+        base += g.count;
+      }
+      return new Mesh({
+        spatialReference: SR,
+        vertexSpace: new MeshLocalVertexSpace({ origin: P(...origin) }),
+        vertexAttributes: { position: pos, normal: nrm, uv },
+        components: comps
+      });
+    }
+    class Groups {
+      constructor() { this.g = {}; }
+      get(key) { return this.g[key] || (this.g[key] = new Geo(M[key][1])); }
+      add(key, kind, args) { this.get(key)[kind](...args); }
+      box(key, b) { this.get(key).box(...b); }
+      mesh(origin) { return buildMesh(this.g, origin); }
+    }
+
+    // ------------------------------------------------------------------
+    // The building, described once as tagged primitives.
+    //   cls: solid | glass | frame | floor    fin: material in the finished stage
+    // Primitives go to `arch` (walls, portico) or `roof` (removed in the
+    // cut-away Detail stage so the fitted-out top floor can be seen).
+    // ------------------------------------------------------------------
+    const arch = [], roof = [], plinth = [], furn = [], lights = new Groups();
+    const add = (list, cls, fin, kind, args) => list.push({ cls, fin, kind, args });
+    const A = (cls, fin, b) => add(arch, cls, fin, "box", b);
+    const R = (cls, fin, b) => add(roof, cls, fin, "box", b);
+
+    // floors: [floor z, ceiling z, sill, head, window width, finished wall material]
+    const FLOORS = [
+      [Z0, Z1, Z0 + 1.2, Z1 - 1.3, 1.3, "rustic"],
+      [Z1, Z2, Z1 + 0.75, Z2 - 1.05, 1.5, "stone"],
+      [Z2, ZR, Z2 + 1.0, ZR - 1.1, 1.3, "stone"]
+    ];
+    const bays = (a0, a1, n) => Array.from({ length: n }, (_, i) => a0 + (i + 0.5) * (a1 - a0) / n);
+
+    // A wall along `axis` ("y": runs along y at x = t) from a0 to a1. t is the
+    // outer face; `inward` (+1/-1) points into the building.
+    // opts: n (bays), order ("column" | "pilaster"), court (plain parapet)
+    function facade(axis, a0, a1, t, inward, n, opts = {}) {
+      const B = (s0, s1, d0, d1, z0, z1) => {           // d measured inward from the outer face
+        const q0 = t + inward * d0, q1 = t + inward * d1;
+        return axis === "y" ? [q0, q1, s0, s1, z0, z1] : [s0, s1, q0, q1, z0, z1];
+      };
+      const centers = bays(a0, a1, n), sp = n ? (a1 - a0) / n : 0;
+      FLOORS.forEach(([z0, z1, sill, head, w, fin], fi) => {
+        const f = opts.court ? "stone" : fin;
+        if (!n) { A("solid", f, B(a0, a1, 0, TH, z0, z1)); return; }
+        A("solid", f, B(a0, a1, 0, TH, z0, sill));
+        A("solid", f, B(a0, a1, 0, TH, head, z1));
+        let cur = a0;
+        for (const c of centers) {
+          const o0 = c - w / 2, o1 = c + w / 2;
+          A("solid", f, B(cur, o0, 0, TH, sill, head));
+          cur = o1;
+          // glazing and a white-painted sash: frame, meeting rail, glazing bars
+          A("glass", "glass", B(o0, o1, 0.26, 0.3, sill, head));
+          const fr = 0.07, mid = sill + (head - sill) * 0.55;
+          A("frame", "sash", B(o0, o1, 0.22, 0.3, sill, sill + fr));
+          A("frame", "sash", B(o0, o1, 0.22, 0.3, head - fr, head));
+          A("frame", "sash", B(o0, o0 + fr, 0.22, 0.3, sill, head));
+          A("frame", "sash", B(o1 - fr, o1, 0.22, 0.3, sill, head));
+          A("frame", "sash", B(o0, o1, 0.2, 0.3, mid - 0.04, mid + 0.04));
+          A("frame", "sash", B(c - 0.025, c + 0.025, 0.24, 0.28, sill, head));
+          // projecting sill, and a cornice hood over the principal-floor windows
+          A("solid", f === "rustic" ? "stone" : f, B(o0 - 0.12, o1 + 0.12, -0.14, 0.05, sill - 0.14, sill));
+          if (fi === 1 && !opts.court) A("solid", "stone", B(o0 - 0.3, o1 + 0.3, -0.26, 0.05, head + 0.25, head + 0.5));
+        }
+        A("solid", f, B(cur, a1, 0, TH, sill, head));
+      });
+      if (!opts.court) {
+        A("solid", "granite", B(a0 - 0.15, a1 + 0.15, -0.18, TH, Z0, Z0 + 0.7));        // granite base course
+        A("solid", "stone", B(a0 - 0.2, a1 + 0.2, -0.22, TH, Z1 - 0.3, Z1 + 0.05));     // string course
+      }
+      // giant order across the principal and upper floors
+      if (opts.order && n) {
+        const edges = [a0 + 0.55, ...centers.slice(1).map(c => c - sp / 2), a1 - 0.55];
+        for (const e of edges) {
+          if (opts.order === "pilaster") {
+            A("solid", "stone", B(e - 0.45, e + 0.45, -0.32, 0.02, Z1 + 0.05, ZR));
+            A("solid", "stone", B(e - 0.6, e + 0.6, -0.42, 0.02, Z1 + 0.05, Z1 + 0.45));
+            A("solid", "stone", B(e - 0.62, e + 0.62, -0.46, 0.02, ZR - 0.55, ZR));
+          } else {
+            const [cx, cy] = axis === "y" ? [t - inward * 0.15, e] : [e, t - inward * 0.15];
+            add(arch, "solid", "stonePlain", "cylinder", [cx, cy, Z1 + 0.5, ZR - 0.6, 0.55, 0.48, 14]);
+            add(arch, "solid", "stone", "box", [cx - 0.72, cx + 0.72, cy - 0.72, cy + 0.72, Z1 + 0.05, Z1 + 0.5]);
+            add(arch, "solid", "stone", "box", [cx - 0.75, cx + 0.75, cy - 0.75, cy + 0.75, ZR - 0.6, ZR]);
+          }
+        }
+      }
+      // roof edge: cornice and balustrade (plain parapet on the light courts)
+      const ext = opts.court ? 0 : 0.9;
+      R("solid", "stone", B(a0 - ext, a1 + ext, -0.45, TH, ZR, ZR + 0.5));
+      R("solid", "stone", B(a0 - ext, a1 + ext, -0.9, TH, ZR + 0.5, ZC));
+      if (opts.court) { R("solid", "stone", B(a0, a1, 0, 0.4, ZC, ZC + 0.7)); return; }
+      R("solid", "stone", B(a0 - 0.3, a1 + 0.3, 0, 0.5, ZC, ZC + 0.22));
+      R("solid", "stone", B(a0 - 0.3, a1 + 0.3, -0.04, 0.54, ZP - 0.2, ZP));
+      const posts = n ? [a0, ...centers.slice(1).map(c => c - sp / 2), a1] : [a0, a1];
+      posts.forEach(p => R("solid", "stone", B(Math.max(a0 - 0.3, p - 0.3), Math.min(a1 + 0.3, p + 0.3), -0.02, 0.52, ZC + 0.22, ZP - 0.2)));
+      for (let i = 0; i < posts.length - 1; i++) {
+        const s0 = posts[i] + 0.45, s1 = posts[i + 1] - 0.45, m = Math.max(1, Math.round((s1 - s0) / 0.5));
+        for (let k = 0; k <= m; k++) {
+          const b = s0 + (k * (s1 - s0)) / m;
+          R("solid", "stone", B(b - 0.1, b + 0.1, 0.15, 0.35, ZC + 0.22, ZP - 0.2));
+        }
+      }
+    }
+
+    // --- Main block: west (front) facade steps forward at the centre and the end pavilions
+    const WEST = [
+      [-55.5, -43, -26.5, 3, "column"], [-43, -16, -25, 7], [-16, 16, -27, 8, "pilaster"],
+      [16, 43, -25, 7], [43, 55.5, -26.5, 3, "column"]
+    ];
+    WEST.forEach(([a0, a1, t, n, order]) => facade("y", a0, a1, t, 1, n, { order }));
+    facade("x", -26.5, -25, 43, 1, 0); facade("x", -26.5, -25, -43, -1, 0);   // pavilion returns
+    facade("x", -27, -25, 16, -1, 0); facade("x", -27, -25, -16, 1, 0);       // centre block returns
+    facade("y", -55.5, 55.5, 25, -1, 29);                                     // east
+    facade("x", -26.5, 25, 55.5, -1, 13);                                     // north
+    facade("x", -26.5, 25, -55.5, 1, 13);                                     // south
+    // two light courts either side of the Great Hall
+    const COURTS = [[-11, 13, 20, 42], [-11, 13, -42, -20]];
+    for (const [x0, x1, y0, y1] of COURTS) {
+      facade("y", y0, y1, x0, -1, 6, { court: true });
+      facade("y", y0, y1, x1, 1, 6, { court: true });
+      facade("x", x0, x1, y0, -1, 6, { court: true });
+      facade("x", x0, x1, y1, 1, 6, { court: true });
+    }
+
+    // --- Floor plates, built by subtracting openings from the footprint
+    const FOOT = [[-25, 25, -55.5, 55.5], [-27, -25, -16, 16], [-26.5, -25, 43, 55.5], [-26.5, -25, -55.5, -43]];
+    function subtract(rects, holes) {
+      let out = rects;
+      for (const [hx0, hx1, hy0, hy1] of holes) {
+        const next = [];
+        for (const r of out) {
+          const [x0, x1, y0, y1] = r;
+          if (hx0 >= x1 || hx1 <= x0 || hy0 >= y1 || hy1 <= y0) { next.push(r); continue; }
+          if (x0 < hx0) next.push([x0, hx0, y0, y1]);
+          if (hx1 < x1) next.push([hx1, x1, y0, y1]);
+          const cx0 = Math.max(x0, hx0), cx1 = Math.min(x1, hx1);
+          if (y0 < hy0) next.push([cx0, cx1, y0, hy0]);
+          if (hy1 < y1) next.push([cx0, cx1, hy1, y1]);
+        }
+        out = next;
+      }
+      return out;
+    }
+    const HALL = [-17, 5, -10, 10], CHAMBER = [5, 17, -10, 10];
+    const LANTERNS = [[-15, 3, -8, 8], [7.5, 14.5, -6, 6]];
+    subtract(FOOT, [...COURTS, HALL]).forEach(([x0, x1, y0, y1]) => A("floor", "carpet", [x0 + 0.3, x1 - 0.3, y0 + 0.3, y1 - 0.3, Z1 - 0.35, Z1]));
+    subtract(FOOT, [...COURTS, HALL, CHAMBER]).forEach(([x0, x1, y0, y1]) => A("floor", "carpet", [x0 + 0.3, x1 - 0.3, y0 + 0.3, y1 - 0.3, Z2 - 0.35, Z2]));
+    subtract(FOOT, [...COURTS, ...LANTERNS]).forEach(([x0, x1, y0, y1]) => R("solid", "lead", [x0 + 0.3, x1 - 0.3, y0 + 0.3, y1 - 0.3, ZR, ZR + 0.45]));
+    subtract(FOOT, COURTS).forEach(([x0, x1, y0, y1]) => A("floor", "carpet", [x0 + 0.3, x1 - 0.3, y0 + 0.3, y1 - 0.3, Z0, Z0 + 0.03]));
+    // roof lanterns over the Great Hall and the Assembly Chamber
+    for (const [x0, x1, y0, y1] of LANTERNS) {
+      const h = ZR + 0.45, top = h + 2.6;
+      // stone upstands around the opening, glazed sides and roof above
+      R("solid", "stone", [x0 - 0.4, x1 + 0.4, y0 - 0.4, y0, ZR, h + 0.6]); R("solid", "stone", [x0 - 0.4, x1 + 0.4, y1, y1 + 0.4, ZR, h + 0.6]);
+      R("solid", "stone", [x0 - 0.4, x0, y0, y1, ZR, h + 0.6]); R("solid", "stone", [x1, x1 + 0.4, y0, y1, ZR, h + 0.6]);
+      R("glass", "glass", [x0, x1, y0, y0 + 0.1, h + 0.6, top]); R("glass", "glass", [x0, x1, y1 - 0.1, y1, h + 0.6, top]);
+      R("glass", "glass", [x0, x0 + 0.1, y0, y1, h + 0.6, top]); R("glass", "glass", [x1 - 0.1, x1, y0, y1, h + 0.6, top]);
+      R("glass", "glass", [x0, x1, y0, y1, top, top + 0.08]);
+      for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / 6) { R("frame", "lead", [x - 0.08, x + 0.08, y0 - 0.05, y0 + 0.15, h + 0.6, top]); R("frame", "lead", [x - 0.08, x + 0.08, y1 - 0.15, y1 + 0.05, h + 0.6, top]); R("frame", "lead", [x - 0.06, x + 0.06, y0, y1, top, top + 0.14]); }
+      for (const y of [y0 - 0.1, y1 + 0.1]) R("frame", "lead", [x0 - 0.1, x1 + 0.1, y - 0.1, y + 0.1, top + 0.08, top + 0.2]);
+    }
+    // the raised attic over the central block, with its own cornice
+    R("solid", "stone", [-27, -17, -16, 16, ZC, ZA - 0.6]);
+    R("solid", "stone", [-27.5, -16.5, -16.5, 16.5, ZA - 0.6, ZA]);
+    R("solid", "lead", [-26.5, -17.5, -15.5, 15.5, ZA, ZA + 0.25]);
+
+    // --- Great Hall and Assembly Chamber interiors (walls, floor, stair)
+    A("solid", "marble", [HALL[0] + 0.2, HALL[1] - 0.2, HALL[2] + 0.2, HALL[3] - 0.2, Z0 + 0.03, Z0 + 0.06]);
+    A("solid", "marble", [HALL[0], HALL[0] + 0.3, HALL[2], HALL[3], Z0, ZR]); A("solid", "marble", [HALL[1] - 0.3, HALL[1], HALL[2], HALL[3], Z0, Z1]);
+    A("solid", "marble", [HALL[0], HALL[1], HALL[2], HALL[2] + 0.3, Z0, ZR]); A("solid", "marble", [HALL[0], HALL[1], HALL[3] - 0.3, HALL[3], Z0, ZR]);
+    A("solid", "plaster", [CHAMBER[0], CHAMBER[1], CHAMBER[2], CHAMBER[2] + 0.3, Z1, ZR]); A("solid", "plaster", [CHAMBER[0], CHAMBER[1], CHAMBER[3] - 0.3, CHAMBER[3], Z1, ZR]);
+    A("solid", "plaster", [CHAMBER[0], CHAMBER[0] + 0.3, CHAMBER[2], CHAMBER[3], Z1, ZR]);
+    // gallery piers along the hall
+    for (let x = -14; x <= 2; x += 4) for (const y of [-9.2, 9.2]) add(arch, "solid", "marble", "cylinder", [x, y, Z1, Z2 + 1.5, 0.35, 0.35, 10]);
+    // imperial stair rising east out of the hall to the principal floor
+    for (let k = 0; k < 18; k++) {
+      const z = Z0 + (k + 1) * (Z1 - Z0) / 18;
+      furn.push({ m: "marble", kind: "box", b: [-3 + k * 0.4, 4.7, -3.2, 3.2, Z0, z], white: "whiteWarm" });
+    }
+    furn.push({ m: "leather", kind: "box", b: [-3, 4.7, -1.1, 1.1, Z0 + 0.06, Z0 + 0.07], white: "whiteWarm" }); // carpet runner start
+    furn.push({ m: "bronze", kind: "box", b: [-3.1, 4.7, -3.3, -3.2, Z0, Z1 + 1], white: "frameGrey" });
+    furn.push({ m: "bronze", kind: "box", b: [-3.1, 4.7, 3.2, 3.3, Z0, Z1 + 1], white: "frameGrey" });
+
+    // --- Portico: podium, grand steps, six columns, entablature and pediment
+    const PX0 = -35, PX1 = -27;
+    add(arch, "solid", "rustic", "box", [PX0, PX1, -12.5, 12.5, Z0, Z1]);
+    add(arch, "solid", "stone", "box", [PX0 - 0.3, PX1, -12.8, 12.8, Z1 - 0.35, Z1]);
+    for (const y of [-6, 0, 6]) add(arch, "solid", "door", "box", [PX0 - 0.05, PX0 + 0.3, y - 1.1, y + 1.1, Z0 + 0.7, Z1 - 1.4]);
+    const COLS = [-10, -6, -2, 2, 6, 10];
+    for (const y of COLS) {
+      const x = -33.3;
+      add(arch, "solid", "stone", "box", [x - 0.95, x + 0.95, y - 0.95, y + 0.95, Z1, Z1 + 0.35]);
+      add(arch, "solid", "stonePlain", "cylinder", [x, y, Z1 + 0.35, Z1 + 0.7, 0.9, 0.78, 18]);
+      add(arch, "solid", "stonePlain", "cylinder", [x, y, Z1 + 0.7, ZR - 0.75, 0.75, 0.63, 18]);
+      add(arch, "solid", "stonePlain", "box", [x - 0.62, x + 0.62, y - 0.95, y + 0.95, ZR - 0.75, ZR - 0.35]);    // Ionic volutes
+      add(arch, "solid", "stonePlain", "box", [x - 0.95, x + 0.95, y - 0.95, y + 0.95, ZR - 0.35, ZR]);            // abacus
+    }
+    add(arch, "solid", "stonePlain", "box", [PX0 - 0.4, PX1, -12.9, 12.9, ZR, ZR + 0.7]);                          // architrave
+    add(arch, "solid", "stonePlain", "box", [PX0 - 0.3, PX1, -12.8, 12.8, ZR + 0.7, ZC - 0.2]);                    // frieze
+    add(arch, "solid", "stonePlain", "box", [PX0 - 1.0, PX1, -13.5, 13.5, ZC - 0.2, ZC + 0.3]);                    // cornice
+    add(arch, "solid", "stonePlain", "prism", [PX0 - 1.0, PX1, -13.5, 13.5, ZC + 0.3, ZC + 5.6]);                  // pediment
+    add(arch, "solid", "stonePlain", "prism", [PX0 - 0.6, PX1, -12.4, 12.4, ZC + 0.3, ZC + 5.1]);
+    add(arch, "solid", "stone", "box", [PX0, PX1, -12.5, 12.5, ZR - 0.25, ZR]);                               // coffered ceiling
+    // sculpture group at the apex: a seated figure between two lions
+    const SX = PX0 + 1.4;
+    add(arch, "solid", "stonePlain", "box", [SX - 1.3, SX + 1.3, -2.8, 2.8, ZC + 5.3, ZC + 6.3]);
+    add(arch, "solid", "stonePlain", "blob", [SX, 0, ZC + 7.4, 0.75, 0.9, 1.3, 11, 0.1]);
+    add(arch, "solid", "stonePlain", "blob", [SX, 0, ZC + 8.9, 0.36, 0.36, 0.42, 12, 0.05]);
+    add(arch, "solid", "stonePlain", "blob", [SX, -1.95, ZC + 6.95, 0.6, 1.0, 0.6, 13, 0.1]);
+    add(arch, "solid", "stonePlain", "blob", [SX, 1.95, ZC + 6.95, 0.6, 1.0, 0.6, 14, 0.1]);
+
+    // --- Terrace plinth (Mourne granite), front steps and the grand stair
+    const PL = (b, fin = "granite") => plinth.push({ fin, b });
+    PL([-44, 34, -66, 66, 0, Z0]);
+    for (let i = 0; i < 8; i++) PL([-44 - (i + 1) * 0.5, -44 - i * 0.5, -22, 22, 0, Z0 * (1 - (i + 1) / 9)]);
+    for (let k = 0; k < 18; k++) PL([-43.1 + k * 0.45, PX0, -11, 11, Z0, Z0 + (k + 1) * (Z1 - Z0) / 18], "stone");
+    for (const s of [-1, 1]) {
+      PL([-44.8, -42.4, s * 11, s * 13.4, Z0, Z0 + 2.4], "stone");
+      for (let k = 0; k < 6; k++) PL([-42.4 + k * 1.25, PX0, s * 11, s * 12.5, Z0, Z0 + 1.2 + (k + 1) * (Z1 - Z0 - 0.2) / 6], "stone");
+    }
+    // terrace balustrade along the front edge (either side of the steps)
+    for (const [y0, y1] of [[-66, -22], [22, 66]]) {
+      A("solid", "stone", [-43.9, -43.4, y0, y1, Z0, Z0 + 0.2]); A("solid", "stone", [-43.95, -43.35, y0, y1, Z0 + 0.95, Z0 + 1.1]);
+      for (let y = y0 + 0.3; y < y1; y += 0.5) A("solid", "stone", [-43.75, -43.55, y - 0.08, y + 0.08, Z0 + 0.2, Z0 + 0.95]);
+    }
+
+    // ------------------------------------------------------------------
+    // Offices along the perimeter: partitions, corridor wall, desks, chairs,
+    // monitors, shelving and ceiling lights (lights only in the finish)
+    // ------------------------------------------------------------------
+    const F = (m, b, white = "whiteWarm", kind = "box") => furn.push({ m, b, white, kind });
+    function offices(axis, a0, a1, face, inward, depth, centers) {
+      const B = (s0, s1, v0, v1, z0, z1) => {
+        const q0 = face + inward * v0, q1 = face + inward * v1;
+        return axis === "y" ? [q0, q1, s0, s1, z0, z1] : [s0, s1, q0, q1, z0, z1];
+      };
+      FLOORS.forEach(([zf, zc], fi) => {
+        const z = zf + (fi === 0 ? 0.03 : 0), ceil = fi === 2 ? ZR : zc - 0.35;
+        A("solid", "plaster", B(a0, a1, depth, depth + 0.15, z, ceil));                 // corridor wall
+        centers.forEach((c, i) => {
+          if (i % 2 === 1 && i < centers.length - 1) {                               // partition every second bay
+            const e = (c + centers[i + 1]) / 2;
+            A("solid", "plaster", B(e - 0.06, e + 0.06, 0, depth, z, ceil));
+          }
+          // desk facing the window, chair behind it
+          F("oak", B(c - 0.8, c + 0.8, 0.9, 1.7, z + 0.72, z + 0.76));
+          F("black", B(c - 0.78, c - 0.72, 0.95, 1.65, z, z + 0.72));
+          F("black", B(c + 0.72, c + 0.78, 0.95, 1.65, z, z + 0.72));
+          F("black", B(c - 0.3, c + 0.3, 1.1, 1.14, z + 0.84, z + 1.2));
+          F("screen", B(c - 0.27, c + 0.27, 1.14, 1.15, z + 0.87, z + 1.17), "frameGrey");
+          F("black", B(c - 0.04, c + 0.04, 1.08, 1.14, z + 0.76, z + 0.86));
+          F("leather", B(c - 0.26, c + 0.26, 2.0, 2.5, z + 0.44, z + 0.52));
+          F("leather", B(c - 0.24, c + 0.24, 2.45, 2.53, z + 0.52, z + 1.02));
+          F("black", B(c - 0.03, c + 0.03, 2.22, 2.28, z + 0.08, z + 0.44));
+          F("black", B(c - 0.3, c + 0.3, 2.22, 2.28, z, z + 0.06)); F("black", B(c - 0.03, c + 0.03, 1.95, 2.55, z, z + 0.06));
+          if (i % 2 === 0) F("oak", B(c - 0.9, c + 0.9, depth - 0.45, depth, z, z + 1.9));   // shelving on the corridor wall
+          else { F("oak", B(c - 0.6, c + 0.6, depth - 2.6, depth - 1.4, z + 0.7, z + 0.74)); F("black", B(c - 0.05, c + 0.05, depth - 2.05, depth - 1.95, z, z + 0.7)); }
+          lights.box("lightOffice", B(c - 0.6, c + 0.6, 1.4, 2.8, ceil - 0.06, ceil - 0.02));
+        });
+      });
+    }
+    WEST.forEach(([a0, a1, t, n]) => offices("y", a0, a1, t + TH, 1, -17 - (t + TH), bays(a0, a1, n)));
+    offices("y", -55.5 + TH, 55.5 - TH, 25 - TH, -1, 7.4, bays(-55.5, 55.5, 29));
+    const endBays = bays(-26.5, 25, 13).filter(x => x > -15.5 && x < 15.5);
+    offices("x", -17, 17, 55.5 - TH, -1, 7.4, endBays);
+    offices("x", -17, 17, -55.5 + TH, 1, 7.4, endBays);
+
+    // Great Hall chandelier
+    {
+      // three tiers of candle rings on arms around a central stem, hung on a chain
+      const cx = -6, cy = 0, zb = ZR - 7.6;
+      F("gold", [cx - 0.04, cx + 0.04, cy - 0.04, cy + 0.04, zb + 3.6, ZR], "frameGrey");
+      F("gold", [cx, cy, zb - 0.5, zb + 3.6, 0.14, 0.1, 10], "frameGrey", "cylinder");
+      F("gold", [cx, cy, zb - 0.9, zb - 0.5, 0.02, 0.35, 10], "frameGrey", "cylinder");     // finial
+      F("gold", [cx, cy, zb + 3.2, zb + 3.8, 0.7, 0.05, 12], "frameGrey", "cylinder");     // crown
+      [[1.9, zb + 0.6, 20], [1.35, zb + 1.7, 14], [0.8, zb + 2.7, 10]].forEach(([r, z, n], tier) => {
+        for (let i = 0; i < n; i++) {
+          const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2, am = (a0 + a1) / 2;
+          const len = 2 * r * Math.sin(Math.PI / n) + 0.03, x = cx + Math.cos(am) * r, y = cy + Math.sin(am) * r;
+          F("gold", [x, y, len, 0.1, z - 0.06, z + 0.06, am + Math.PI / 2], "frameGrey", "obox");               // ring
+          F("sash", [x, y, z + 0.06, z + 0.34, 0.035, 0.035, 6], "whiteWarm", "cylinder");                         // candle
+          lights.get("lightWarm").blob(x, y, z + 0.42, 0.06, 0.06, 0.1, 70 + tier * 20 + i, 0);
+          if (i % 2 === 0) F("gold", [cx + Math.cos(am) * r / 2, cy + Math.sin(am) * r / 2, r, 0.06, z - 0.03, z + 0.03, am], "frameGrey", "obox"); // arm
+        }
+      });
+    }
+    // Assembly Chamber: tiered horseshoe of benches facing the Speaker at the east end
+    {
+      const cx = 15.2, cy = 0;
+      F("oak", [15.4, 16.6, -1.2, 1.2, Z1, Z1 + 1.6]);                                   // Speaker's chair
+      F("oak", [12.8, 13.8, -2, 2, Z1, Z1 + 0.9]);                                       // clerks' table
+      for (let ring = 0; ring < 3; ring++) {
+        const r = 4.2 + ring * 1.5, zb = Z1 + ring * 0.35, seg = 14;
+        for (let i = 0; i < seg; i++) {
+          const a0 = Math.PI * 0.55 + (i / seg) * Math.PI * 0.9, a1 = Math.PI * 0.55 + ((i + 1) / seg) * Math.PI * 0.9, am = (a0 + a1) / 2;
+          const len = 2 * r * Math.sin((a1 - a0) / 2) + 0.02, px = cx + Math.cos(am) * r, py = cy + Math.sin(am) * r;
+          F("oak", [px, py, len, 1.3, Z1, zb + 0.35, am + Math.PI / 2], "whiteWarm", "obox");
+          F("leather", [cx + Math.cos(am) * (r + 0.25), cy + Math.sin(am) * (r + 0.25), len, 0.55, zb + 0.35, zb + 0.8, am + Math.PI / 2], "whiteWarm", "obox");
+          F("oak", [cx + Math.cos(am) * (r - 0.4), cy + Math.sin(am) * (r - 0.4), len, 0.4, zb + 0.35, zb + 1.1, am + Math.PI / 2], "whiteWarm", "obox");
+        }
+      }
+      A("solid", "leather", [CHAMBER[0] + 0.3, CHAMBER[1], CHAMBER[2] + 0.3, CHAMBER[3] - 0.3, Z1, Z1 + 0.04]);
+    }
+
+    // ------------------------------------------------------------------
+    // Site: roads, avenue, forecourt, car parks, trees and lamps
+    // ------------------------------------------------------------------
+    const AVE_END = -480, RB = { x: -150, r: 22, island: 13 };
+    const CARPARKS = [[0, 70, 92, 132], [0, 70, -132, -92]];
+    const rect = (x0, x1, y0, y1) => [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]].map(([x, y]) => P(x, y).slice(0, 2));
+    const circle = (cx, cy, r, n = 48) => { const ring = []; for (let i = n; i >= 0; i--) { const a = (i / n) * Math.PI * 2; ring.push(P(cx + Math.cos(a) * r, cy + Math.sin(a) * r).slice(0, 2)); } return ring; };
+    const hole = (ring) => ring.slice().reverse();
+
+    const LAWN = [rect(-520, 170, -240, 240)];
+    const ROADS = [
+      rect(-78, 50, -80, 80), hole(rect(-71, 43, -73, 73)),                            // ring road around the terrace
+      rect(AVE_END, -78, -4.5, 4.5),                                                  // Prince of Wales Avenue
+      circle(RB.x, 0, RB.r),                                                          // roundabout at the statue
+      rect(20, 27, 73, 92), rect(20, 27, -92, -73),                                   // car park links
+      ...CARPARKS.map(([x0, x1, y0, y1]) => rect(x0, x1, y0, y1))
+    ];
+    const PAVING = [rect(-71, -44, -44, 44), rect(AVE_END, -78, 14, 17), rect(AVE_END, -78, -17, -14), rect(-78, -71, 14, 17), rect(-78, -71, -17, -14)];
+    const ISLAND = [circle(RB.x, 0, RB.island)];
+    // car park bays: 2.5 m x 5 m, four rows per car park
+    const BAY_ROWS = [[3.5, 8.5], [15, 20], [20, 25], [31.5, 36.5]];
+    const bayLines = [], cars = [];
+    {
+      const r = rng(404);
+      const COLORS = ["carSilver", "carBlack", "carWhite", "carBlue", "carRed", "carSilver", "carGreen", "carBlack", "carWhite"];
+      for (const [x0, , y0, y1] of CARPARKS) {
+        const north = y0 > 0;
+        for (const [d0, d1] of BAY_ROWS) {
+          const b0 = north ? y0 + d0 : y1 - d1, b1 = north ? y0 + d1 : y1 - d0;
+          for (let i = 0; i <= 25; i++) { const x = x0 + 3 + i * 2.5; bayLines.push(rect(x - 0.06, x + 0.06, b0, b1)); }
+          bayLines.push(rect(x0 + 3, x0 + 3 + 62.5, (d0 === 3.5 || d0 === 20) === north ? b1 - 0.06 : b0, (d0 === 3.5 || d0 === 20) === north ? b1 : b0 + 0.06));
+          for (let i = 0; i < 25; i++) {
+            if (r() < 0.28) continue;
+            cars.push({ x: x0 + 3 + (i + 0.5) * 2.5 + (r() - 0.5) * 0.25, y: (b0 + b1) / 2 + (r() - 0.5) * 0.4, color: COLORS[Math.floor(r() * COLORS.length)], len: 4.1 + r() * 0.7 });
+          }
+        }
+      }
+    }
+    const carGroups = new Groups();
+    for (const c of cars) {
+      const hl = c.len / 2, g = carGroups;
+      g.box(c.color, [c.x - 0.88, c.x + 0.88, c.y - hl, c.y + hl, 0.3, 0.92]);
+      g.box("carGlass", [c.x - 0.8, c.x + 0.8, c.y - hl * 0.52, c.y + hl * 0.42, 0.92, 1.4]);
+      g.box(c.color, [c.x - 0.74, c.x + 0.74, c.y - hl * 0.46, c.y + hl * 0.36, 1.4, 1.48]);
+      g.box("tyre", [c.x - 0.92, c.x + 0.92, c.y - hl * 0.8, c.y - hl * 0.52, 0, 0.62]);
+      g.box("tyre", [c.x - 0.92, c.x + 0.92, c.y + hl * 0.52, c.y + hl * 0.8, 0, 0.62]);
+    }
+
+    // Lamp standards
+    const lampPts = [];
+    for (let x = -90; x > AVE_END + 10; x -= 30) if (Math.abs(x - RB.x) > RB.r + 4) lampPts.push([x, 6.5, 6], [x, -6.5, 6]);
+    for (let x = -60; x <= 40; x += 25) lampPts.push([x, 76.5, 6], [x, -76.5, 6]);
+    for (let y = -50; y <= 50; y += 25) lampPts.push([-74.5, y, 6], [46.5, y, 6]);
+    for (const [x0, , y0, y1] of CARPARKS) for (let x = x0 + 8; x < x0 + 66; x += 16) { const n = y0 > 0; lampPts.push([x, n ? y0 + 11.75 : y1 - 11.75, 8], [x, n ? y0 + 28.25 : y1 - 28.25, 8]); }
+    for (const [x, y, h] of lampPts) {
+      lights.get("black").cylinder(x, y, 0, h, 0.12, 0.07, 8);
+      lights.box("black", [x - 0.3, x + 0.3, y - 0.3, y + 0.3, h, h + 0.12]);
+      lights.box(h > 7 ? "lightCool" : "lightWarm", [x - 0.24, x + 0.24, y - 0.24, y + 0.24, h - 0.35, h]);
+    }
+    // lanterns on the stair pedestals and uplighters along the terrace facing the facade
+    for (const s of [-1, 1]) {
+      lights.get("bronze").cylinder(-43.6, s * 12.2, Z0 + 2.4, Z0 + 5.4, 0.12, 0.09, 8);
+      lights.get("lightWarm").blob(-43.6, s * 12.2, Z0 + 5.8, 0.4, 0.4, 0.5, 5 + s, 0);
+    }
+    for (let y = -62; y <= 62; y += 6) if (Math.abs(y) > 13) lights.box("lightWarm", [-42.6, -42.2, y - 0.2, y + 0.2, Z0, Z0 + 0.18]);
+    for (const y of COLS) lights.box("lightWarm", [-34.6, -34.3, y - 0.25, y + 0.25, Z1, Z1 + 0.12]);
+
+    // Statue at the head of the avenue (on the roundabout island)
+    const statue = new Groups();
+    statue.box("granite", [RB.x - 2.2, RB.x + 2.2, -2.2, 2.2, 0, 0.6]);
+    statue.box("granite", [RB.x - 1.5, RB.x + 1.5, -1.5, 1.5, 0.6, 4.6]);
+    statue.box("granite", [RB.x - 1.8, RB.x + 1.8, -1.8, 1.8, 4.6, 5.0]);
+    statue.get("bronze").blob(RB.x, 0, 6.4, 0.5, 0.6, 1.4, 21, 0.12);
+    statue.get("bronze").blob(RB.x, 0, 8.1, 0.28, 0.28, 0.34, 22, 0.05);
+    statue.get("bronze").blob(RB.x - 0.25, 0.55, 7.3, 0.2, 0.2, 0.55, 23, 0.1);
+
+    // Trees: [x, y, type, scale, batch]
+    const TREES = [];
+    {
+      const r = rng(88);
+      for (let x = -92; x > AVE_END + 6; x -= 14) {
+        if (Math.abs(x - RB.x) < RB.r + 6) continue;
+        TREES.push([x + (r() - 0.5), 10.5, "lime", 1 + r() * 0.15, 0], [x + (r() - 0.5), -10.5, "lime", 1 + r() * 0.15, 1]);
+        if (x < -110) TREES.push([x + 7, 23 + r() * 4, r() < 0.5 ? "oak" : "lime", 1 + r() * 0.2, 0], [x + 7, -23 - r() * 4, r() < 0.5 ? "oak" : "lime", 1 + r() * 0.2, 1]);
+      }
+      for (const [x0, x1, y0, y1] of CARPARKS) {
+        const n = y0 > 0, b = n ? 2 : 3;
+        for (let x = x0 + 2; x <= x1; x += 9) TREES.push([x + (r() - 0.5) * 2, n ? y1 + 6 + r() * 3 : y0 - 6 - r() * 3, r() < 0.3 ? "conifer" : "oak", 0.9 + r() * 0.3, b]);
+        for (let y = y0 + 4; y <= y1; y += 9) { TREES.push([x0 - 6, y, "oak", 0.9 + r() * 0.3, b], [x1 + 6, y, r() < 0.5 ? "conifer" : "oak", 0.9 + r() * 0.3, b]); }
+        for (let x = x0 + 12; x < x1 - 8; x += 16) TREES.push([x, n ? y0 + 28.25 : y1 - 28.25, "lime", 0.7, b]);
+      }
+      for (let i = 0; i < 46; i++) {                                                     // woodland behind the building
+        const x = 62 + r() * 95, y = (r() - 0.5) * 170;
+        if (x < 80 && Math.abs(y) > 88) continue;
+        TREES.push([x, y, r() < 0.35 ? "conifer" : "oak", 0.95 + r() * 0.45, 4]);
+      }
+      for (const s of [-1, 1]) for (const [x, y] of [[-95, 40], [-110, 52], [-100, 62], [-120, 38], [-88, 88], [-60, 100], [-40, 94], [60, 60]])
+        TREES.push([x + (r() - 0.5) * 4, s * y, r() < 0.3 ? "conifer" : "oak", 1 + r() * 0.3, 5]);
+    }
+    function treeInto(g, x, y, type, s, seed, white) {
+      const T = white ? "treeWhite" : "trunk";
+      const leaf = (i) => white ? "treeWhite" : ["leaf1", "leaf2", "leaf3", "leaf4"][i % 4];
+      const r = rng(seed);
+      if (type === "conifer") {
+        g.get(T).cylinder(x, y, 0, 2.5 * s, 0.35 * s, 0.25 * s, 6);
+        for (let k = 0; k < 3; k++) g.get(white ? T : "leaf3").cylinder(x, y, (2 + k * 3.2) * s, (7.5 + k * 3.2) * s, (3.4 - k * 0.9) * s, 0, 8);
+        return;
+      }
+      const h = type === "lime" ? 1.25 : 1;
+      g.get(T).cylinder(x, y, 0, 5.5 * s * h, 0.45 * s, 0.3 * s, 7);
+      const n = 3 + Math.floor(r() * 2);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + r(), d = (1.6 + r() * 1.4) * s;
+        g.get(leaf(i + seed)).blob(x + Math.cos(a) * d, y + Math.sin(a) * d, (7 + r() * 2.5) * s * h, (3 + r()) * s, (3 + r()) * s, (2.6 + r()) * s * h, seed + i);
+      }
+      g.get(leaf(seed)).blob(x, y, 9.4 * s * h, 3.6 * s, 3.6 * s, 3 * s * h, seed + 20);
+    }
+    const NBATCH = 6;
+    const treeWhite = Array.from({ length: NBATCH }, () => new Groups()), treeFin = Array.from({ length: NBATCH }, () => new Groups());
+    TREES.forEach(([x, y, type, s, b], i) => { treeInto(treeWhite[b], x, y, type, s, 500 + i * 37, true); treeInto(treeFin[b], x, y, type, s, 500 + i * 37, false); });
+
+    // ------------------------------------------------------------------
+    // Massing volumes (stage 2) — also the skeleton for the sketch
+    // ------------------------------------------------------------------
+    const MASS = [
+      [-25, -11, -55.5, 55.5, Z0, ZP], [13, 25, -55.5, 55.5, Z0, ZP],
+      [-11, 13, 42, 55.5, Z0, ZP], [-11, 13, -55.5, -42, Z0, ZP], [-11, 13, -20, 20, Z0, ZP],
+      [-27, -25, -16, 16, Z0, ZP], [-27, -17, -16, 16, ZP, ZA],
+      [-26.5, -25, 43, 55.5, Z0, ZP], [-26.5, -25, -55.5, -43, Z0, ZP],
+      [PX0, PX1, -12.5, 12.5, Z0, Z1], [PX0 - 1, PX1, -13.5, 13.5, ZR, ZC + 0.3],
+      [-15, 3, -8, 8, ZP, ZP + 2.4], [7.5, 14.5, -6, 6, ZP, ZP + 2.4]
+    ];
+    const massing = new Groups();
+    MASS.forEach(b => massing.box("white", b));
+    COLS.forEach(y => massing.get("white").cylinder(-33.3, y, Z1, ZR, 0.8, 0.66, 14));
+    massing.get("white").prism(PX0 - 1, PX1, -13.5, 13.5, ZC + 0.3, ZC + 5.6);
+
+    // ------------------------------------------------------------------
+    // Assemble meshes per stage
+    // ------------------------------------------------------------------
+    const whiteKey = (cls) => ({ glass: "glassWhite", frame: "frameGrey", floor: "floorWhite" })[cls] || "white";
+    const archWhite = new Groups(), archFin = new Groups(), glassWhite = new Groups(), glassFin = new Groups();
+    const roofWhite = new Groups(), roofFin = new Groups();
+    for (const { cls, fin, kind, args } of arch) {
+      (cls === "glass" ? glassWhite : archWhite).add(whiteKey(cls), kind, args);
+      (cls === "glass" ? glassFin : archFin).add(fin, kind, args);
+    }
+    for (const { cls, fin, kind, args } of roof) { roofWhite.add(whiteKey(cls), kind, args); roofFin.add(fin, kind, args); }
+    const plinthWhite = new Groups(), plinthFin = new Groups();
+    for (const { fin, b } of plinth) { plinthWhite.box("white", b); plinthFin.box(fin, b); }
+    const furnWhite = new Groups(), furnFin = new Groups();
+    for (const { m, b, white, kind = "box" } of furn) { furnWhite.add(white, kind, b); furnFin.add(m, kind, b); }
+
+    // ------------------------------------------------------------------
+    // Sketch linework: hand-drawn edges with overshoot and double strokes
+    // ------------------------------------------------------------------
+    const sketchPaths = [], constructionPaths = [];
+    {
+      const r = rng(1932);
+      const stroke = (a, b, over = 0.6, jit = 0.08) => {
+        const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l = Math.hypot(...d) || 1, u = d.map(x => x / l);
+        const o1 = over * (0.3 + r()), o2 = over * (0.3 + r());
+        const j = () => (r() - 0.5) * jit;
+        const p0 = [a[0] - u[0] * o1 + j(), a[1] - u[1] * o1 + j(), a[2] - u[2] * o1 * 0.5];
+        const p1 = [b[0] + u[0] * o2 + j(), b[1] + u[1] * o2 + j(), b[2] + u[2] * o2 * 0.5];
+        const m = [(p0[0] + p1[0]) / 2 + j() * 2, (p0[1] + p1[1]) / 2 + j() * 2, (p0[2] + p1[2]) / 2 + j()];
+        sketchPaths.push([p0, m, p1]);
+        if (r() < 0.4) sketchPaths.push([p0, p1].map(p => [p[0] + j() * 2, p[1] + j() * 2, p[2] + j()]));
+      };
+      const boxEdges = (b, over, jit) => {
+        const [x0, x1, y0, y1, z0, z1] = b, c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+        for (let i = 0; i < 4; i++) {
+          const p = c[i], q = c[(i + 1) % 4];
+          stroke([p[0], p[1], z0], [q[0], q[1], z0], over, jit);
+          stroke([p[0], p[1], z1], [q[0], q[1], z1], over, jit);
+          stroke([p[0], p[1], z0], [p[0], p[1], z1], over * 0.6, jit);
+        }
+      };
+      boxEdges([-44, 34, -66, 66, 0, Z0], 2.4, 0.3);
+      MASS.forEach(b => boxEdges(b, 1.4, 0.2));
+      // portico: columns, pediment
+      for (const y of COLS) { stroke([-33.3, y - 0.75, Z1], [-33.3, y - 0.65, ZR], 0.3); stroke([-33.3, y + 0.75, Z1], [-33.3, y + 0.65, ZR], 0.3); }
+      stroke([PX0 - 1, -13.5, ZC + 0.3], [PX0 - 1, 0, ZC + 5.6], 0.8); stroke([PX0 - 1, 0, ZC + 5.6], [PX0 - 1, 13.5, ZC + 0.3], 0.8);
+      stroke([PX0 - 1, 0, ZC + 5.6], [PX1, 0, ZC + 5.6], 0.5);
+      stroke([-43.1, -11, Z0], [PX0, -11, Z1], 0.4); stroke([-43.1, 11, Z0], [PX0, 11, Z1], 0.4);
+      for (let k = 0; k < 18; k += 3) stroke([-43.1 + k * 0.45, -11, Z0 + k * 0.32], [-43.1 + k * 0.45, 11, Z0 + k * 0.32], 0.3);
+      // window rhythm on the west front and the ends
+      const winRect = (axis, c, t, [, , sill, head, w]) => {
+        const pt = (a, z) => axis === "y" ? [t - 0.05, a, z] : [a, t, z];
+        stroke(pt(c - w / 2, sill), pt(c + w / 2, sill), 0.15, 0.04); stroke(pt(c - w / 2, head), pt(c + w / 2, head), 0.15, 0.04);
+        stroke(pt(c - w / 2, sill), pt(c - w / 2, head), 0.15, 0.04); stroke(pt(c + w / 2, sill), pt(c + w / 2, head), 0.15, 0.04);
+      };
+      WEST.forEach(([a0, a1, t, n]) => bays(a0, a1, n).forEach(c => FLOORS.forEach(fl => winRect("y", c, t, fl))));
+      bays(-26.5, 25, 13).forEach(c => { winRect("x", c, 55.55, FLOORS[1]); winRect("x", c, -55.55, FLOORS[1]); });
+      for (const z of [Z1, Z2]) { stroke([-25.1, -55.5, z], [-25.1, 55.5, z], 1.5, 0.1); }
+      // site: avenue, ring road, roundabout, car parks
+      const flat = (x0, y0, x1, y1, over = 2) => stroke([x0, y0, 0.05], [x1, y1, 0.05], over, 0.3);
+      for (const y of [-4.5, 4.5, -14, 14]) for (let x = -78; x > AVE_END; x -= 60) flat(x, y, Math.max(AVE_END, x - 60), y, 3);
+      [[-78, 50, -80, 80], [-71, 43, -73, 73], ...CARPARKS].forEach(([x0, x1, y0, y1]) => { flat(x0, y0, x1, y0); flat(x1, y0, x1, y1); flat(x1, y1, x0, y1); flat(x0, y1, x0, y0); });
+      for (const rr of [RB.r, RB.island]) { const ring = []; for (let i = 0; i <= 50; i++) { const a = (i / 48) * Math.PI * 2, q = rr * (1 + (r() - 0.5) * 0.04); ring.push([RB.x + Math.cos(a) * q, Math.sin(a) * q, 0.05]); } sketchPaths.push(ring); }
+      stroke([RB.x, 0, 0], [RB.x, 0, 8.4], 0.2);
+      // trees as loose scribbled circles with a trunk line
+      for (const [x, y, type, s] of TREES) {
+        const rad = (type === "conifer" ? 3.2 : 5.2) * s, ring = [], z = type === "conifer" ? 4 * s : 7.5 * s;
+        for (let i = 0; i <= 26; i++) { const a = (i / 24) * Math.PI * 2, q = rad * (1 + (r() - 0.5) * 0.14); ring.push([x + Math.cos(a) * q, y + Math.sin(a) * q, z]); }
+        sketchPaths.push(ring);
+        stroke([x, y, 0], [x, y, z + 2 * s], 0.1);
+      }
+      // regulating grid centred on the main axis
+      for (let v = -150; v <= 150; v += 10) constructionPaths.push([[v - 40, -160], [v - 40, 160]], [[-200, v], [110, v]]);
+      constructionPaths.push([[AVE_END, 0], [160, 0]], [[-25, -200], [-25, 200]]);
+    }
+
+    // ------------------------------------------------------------------
+    // Map, view and layers
+    // ------------------------------------------------------------------
+    const map = new Map({ basemap: "satellite" });
+    const layer = (title, extra = {}) => new GraphicsLayer(Object.assign({ title, elevationInfo: { mode: "absolute-height" } }, extra));
+    const draped = (title) => layer(title, { elevationInfo: { mode: "on-the-ground" } });
+    const L_site = draped("lawns"), L_roads = draped("roads"), L_paths = draped("paving and markings"), L_construct = draped("construction");
+    const L_sketch = layer("sketch");
+    const L_plinthWhite = layer("plinth-white"), L_mass = layer("massing"), L_massEdges = layer("massing-edges");
+    const L_archWhite = layer("arch-white"), L_roofWhite = layer("roof-white"), L_glassWhite = layer("glass-white");
+    const L_furnWhite = layer("furniture-white"), L_treesWhite = layer("trees-white");
+    const L_archFin = layer("arch-finished"), L_roofFin = layer("roof-finished"), L_furnFin = layer("furniture-finished");
+    const L_glassFin = layer("glass-finished"), L_cars = layer("cars"), L_treesFin = layer("trees-finished"), L_treesReal = layer("trees-realistic");
+    const L_lights = layer("lights");
+    const ALL = [L_site, L_roads, L_paths, L_construct, L_plinthWhite, L_mass, L_massEdges, L_archWhite, L_roofWhite, L_furnWhite, L_treesWhite,
+      L_archFin, L_roofFin, L_furnFin, L_cars, L_treesFin, L_treesReal, L_lights, L_glassWhite, L_glassFin, L_sketch];
+
+    const meshSym = (edges) => ({ type: "mesh-3d", symbolLayers: [{ type: "fill", ...(edges ? { edges } : {}) }] });
+    const modelEdges = { type: "solid", color: [60, 64, 72, 0.3], size: 0.5 };
+    const massEdges = { type: "sketch", color: [40, 44, 52, 0.75], size: 1.1, extensionLength: 0.8 };
+    const drapedFill = (color) => ({ type: "polygon-3d", symbolLayers: [{ type: "fill", material: { color }, outline: { color: [0, 0, 0, 0], size: 0 } }] });
+
+    L_construct.add(new Graphic({
+      geometry: new Polyline({ paths: constructionPaths.map(path => path.map(p => P(p[0], p[1]).slice(0, 2))), spatialReference: SR }),
+      symbol: { type: "line-3d", symbolLayers: [{ type: "line", size: 0.8, material: { color: [70, 120, 190, 0.35] } }] }
+    }));
+    const toMapPaths = (paths) => paths.map(path => path.map(p => P(...p)));
+    const sketchSymbol = { type: "line-3d", symbolLayers: [{ type: "line", size: 1.3, cap: "round", join: "round", material: { color: [38, 42, 52, 0.85] } }] };
+    const sketchGraphic = new Graphic({ geometry: new Polyline({ paths: toMapPaths(sketchPaths.slice(0, 1)), hasZ: true, spatialReference: SR }), symbol: sketchSymbol });
+    L_sketch.add(sketchGraphic);
+
+    const massOrigin = [0, 0, Z0];
+    const massMesh = massing.mesh(massOrigin);
+    // The animated massing carries no edges; its sketchy outline lives on a static, fill-less
+    // copy so edge generation never races with the per-frame geometry updates.
+    const massGraphic = new Graphic({ geometry: massMesh, symbol: meshSym() });
+    L_mass.add(massGraphic);
+    L_massEdges.add(new Graphic({
+      geometry: massMesh,
+      symbol: { type: "mesh-3d", symbolLayers: [{ type: "fill", material: { color: [255, 255, 255, 0], colorMixMode: "replace" }, castShadows: false, edges: massEdges }] }
+    }));
+    L_plinthWhite.add(new Graphic({ geometry: plinthWhite.mesh(), symbol: meshSym(modelEdges) }));
+    L_archWhite.add(new Graphic({ geometry: archWhite.mesh(), symbol: meshSym(modelEdges) }));
+    L_roofWhite.add(new Graphic({ geometry: roofWhite.mesh(), symbol: meshSym(modelEdges) }));
+    L_glassWhite.add(new Graphic({ geometry: glassWhite.mesh(), symbol: meshSym() }));
+    const furnWhiteMesh = furnWhite.mesh();
+    const furnWhiteGraphic = new Graphic({ geometry: furnWhiteMesh, symbol: meshSym() });
+    L_furnWhite.add(furnWhiteGraphic);
+    L_archFin.add(new Graphic({ geometry: archFin.mesh(), symbol: meshSym() }));
+    L_archFin.add(new Graphic({ geometry: plinthFin.mesh(), symbol: meshSym() }));
+    L_archFin.add(new Graphic({ geometry: statue.mesh([RB.x, 0, 0]), symbol: meshSym() }));
+    L_roofFin.add(new Graphic({ geometry: roofFin.mesh(), symbol: meshSym() }));
+    L_glassFin.add(new Graphic({ geometry: glassFin.mesh(), symbol: meshSym() }));
+    L_furnFin.add(new Graphic({ geometry: furnFin.mesh(), symbol: meshSym() }));
+    L_cars.add(new Graphic({ geometry: carGroups.mesh([35, 0, 0]), symbol: meshSym() }));
+    L_lights.add(new Graphic({ geometry: lights.mesh(), symbol: meshSym() }));
+    L_site.add(new Graphic({ geometry: new Polygon({ rings: LAWN, spatialReference: SR }), symbol: drapedFill([88, 118, 62, 1]) }));
+    L_roads.add(new Graphic({ geometry: new Polygon({ rings: ROADS, spatialReference: SR }), symbol: drapedFill([74, 76, 80, 1]) }));
+    L_paths.add(new Graphic({ geometry: new Polygon({ rings: PAVING, spatialReference: SR }), symbol: drapedFill([196, 188, 172, 1]) }));
+    L_paths.add(new Graphic({ geometry: new Polygon({ rings: ISLAND, spatialReference: SR }), symbol: drapedFill([104, 136, 70, 1]) }));
+    L_paths.add(new Graphic({ geometry: new Polygon({ rings: bayLines, spatialReference: SR }), symbol: drapedFill([236, 236, 230, 1]) }));
+
+    // Tree batches grow out of the ground (vertical scale about z = 0), staggered by batch.
+    const treeWhiteGraphics = [], treeFinGraphics = [];
+    for (let b = 0; b < NBATCH; b++) {
+      const wm = treeWhite[b].mesh(), fm = treeFin[b].mesh();
+      const gw = new Graphic({ geometry: wm, symbol: meshSym() }), gf = new Graphic({ geometry: fm, symbol: meshSym() });
+      gw.baseMesh = wm; gf.baseMesh = fm; gw.delay = gf.delay = (b / NBATCH) * 0.3;
+      treeWhiteGraphics.push(gw); treeFinGraphics.push(gf);
+    }
+    L_treesWhite.addMany(treeWhiteGraphics);
+    L_treesFin.addMany(treeFinGraphics);
+
+    ALL.forEach(l => { l.opacity = 0; l.visible = [L_massEdges, L_plinthWhite, L_archWhite, L_roofWhite].includes(l); });
+    map.addMany(ALL);
+    map.ground.surfaceColor = [244, 241, 234];
+    map.ground.navigationConstraint = { type: "stay-above" };
+
+    // pull the camera back on narrow (portrait) screens so the whole building fits
+    const fit = () => Math.max(1, Math.pow(1.4 / (window.innerWidth / window.innerHeight), 0.6));
+    const HOME = { target: [-12, 0, 9], heading: 62, tilt: 66, dist: 230 * fit() };
+    const INTRO = { target: [-60, 0, 0], heading: 90, tilt: 35, dist: 700 };
+
+    const view = new SceneView({
+      container: "view",
+      map,
+      viewingMode: "global",
+      spatialReference: SR,
+      camera: orbitCamera(INTRO),
+      qualityProfile: "high",
+      popupEnabled: false,
+      ui: { components: [] },
+      environment: {
+        atmosphereEnabled: true,
+        starsEnabled: false,
+        lighting: { type: "sun", date: sunDate(0), directShadowsEnabled: true, displayUTCOffset: 1, glow: { intensity: 0.4 } }
+      }
+    });
+    // left-drag orbits the scene (right-drag pans); the navigation toggle switches the two
+    try { view.navigation.actionMap.dragPrimary = "rotate"; view.navigation.actionMap.dragSecondary = "pan"; } catch { /* older runtimes */ }
+
+    // ------------------------------------------------------------------
+    // Camera helpers (orbit around the point at the centre of the view)
+    // ------------------------------------------------------------------
+    function forwardOf(h, t) {
+      const hr = h * Math.PI / 180, tr = t * Math.PI / 180;
+      return [Math.sin(hr) * Math.sin(tr), Math.cos(hr) * Math.sin(tr), -Math.cos(tr)];
+    }
+    function orbitCamera(o) {
+      const f = forwardOf(o.heading, o.tilt);
+      const [x, y, z] = P(o.target[0] - f[0] * o.dist, o.target[1] - f[1] * o.dist, o.target[2] - f[2] * o.dist);
+      return new Camera({ position: new Point({ x, y, z, spatialReference: SR }), heading: o.heading, tilt: o.tilt, fov: 50 });
+    }
+    function orbitFromView() {
+      const cam = view.camera, p = toLocal(cam.position), f = forwardOf(cam.heading, cam.tilt);
+      let t = view.center ? toLocal(view.center) : null;
+      if (!t || !Number.isFinite(t[2])) { const d = f[2] < -0.02 ? (p[2] - 8) / -f[2] : 200; t = [p[0] + f[0] * d, p[1] + f[1] * d, 8]; }
+      return { target: t, heading: cam.heading, tilt: cam.tilt, dist: Math.hypot(p[0] - t[0], p[1] - t[1], p[2] - t[2]) };
+    }
+    let orbit = null, autoOrbit = false;
+    const setCam = (o) => { orbit = o; view.camera = orbitCamera(o); };
+    const flyTo = (o, duration) => view.goTo(orbitCamera(o), { duration, easing: "in-out-cubic" }).catch(() => {});
+    const stopAuto = () => { if (autoOrbit) toggleAutoOrbit(false); };
+    view.on(["drag", "mouse-wheel", "double-click", "key-down", "hold"], stopAuto);
+
+    // ------------------------------------------------------------------
+    // Realistic trees (EsriRealisticTreesStyle) for the finish, with the
+    // low-poly trees kept as the fallback if the style cannot be reached.
+    // ------------------------------------------------------------------
+    const realTrees = { ready: false };
+    const SPECIES = { lime: ["Tilia", "Acer", "Other"], oak: ["Quercus", "Fagus", "Acer", "Other"], conifer: ["Pinus", "Picea", "Abies"] };
+    const HEIGHT = { lime: 15, oak: 13, conifer: 14 };
+    const symbolCache = {};
+    function treeSymbol(candidates) {
+      const key = candidates.join("|");
+      return symbolCache[key] || (symbolCache[key] = (async () => {
+        for (const name of candidates) {
+          try { return await withTimeout(new WebStyleSymbol({ styleName: "EsriRealisticTreesStyle", name }).fetchSymbol(), 15000); } catch { /* next */ }
+        }
+        return null;
+      })());
+    }
+    async function loadRealisticTrees() {
+      const r = rng(77), graphics = [];
+      for (const [x, y, type, s] of TREES) {
+        const base = await treeSymbol(SPECIES[type]);
+        if (!base) return;
+        const symbol = base.clone(), obj = symbol.symbolLayers.getItemAt(0);
+        obj.width = undefined; obj.depth = undefined;
+        obj.height = HEIGHT[type] * s * (0.9 + r() * 0.2); obj.heading = r() * 360;
+        const [px, py] = P(x, y);
+        graphics.push(new Graphic({ geometry: new Point({ x: px, y: py, z: 0, spatialReference: SR }), symbol }));
+      }
+      L_treesReal.addMany(graphics);
+      realTrees.ready = true;
+      L_treesReal._o = L_treesFin._o = undefined;
+    }
+
+    // ------------------------------------------------------------------
+    // Stage morph (t runs 0..3 continuously; integers are the four stages)
+    // ------------------------------------------------------------------
+    function sunDate(t) {
+      // 21 September at Stormont: midday light for the model stages, a low evening sun on the west front for the finish.
+      const minutes = lerp(12 * 60 + 40, 16 * 60 + 55, smooth(2.0, 3.0, t));
+      return new Date(Date.UTC(2025, 8, 21, 0, Math.round(minutes)));
+    }
+    // Edged layers stay "visible" and are hidden through opacity only: toggling visibility
+    // while their edges are still being generated trips an internal SceneView race.
+    const EDGED = new Set([L_massEdges, L_plinthWhite, L_archWhite, L_roofWhite]);
+    const setOpacity = (l, o) => {
+      o = Math.round(o * 500) / 500;
+      if (l._o === o) return;
+      l._o = o; l.opacity = o; l.visible = EDGED.has(l) || o > 0;
+    };
+    const setTransform = (g, key, t, s) => {
+      const k = `${key}:${t.join(",")}:${s.join(",")}`;
+      if (g._k === k) return;
+      g._k = k;
+      const m = g.baseMesh.clone();
+      m.transform = new MeshTransform({ translation: t, scale: s });
+      g.geometry = m;
+    };
+    massGraphic.baseMesh = massMesh; furnWhiteGraphic.baseMesh = furnWhiteMesh;
+
+    const GROUND = [[244, 241, 234], [228, 228, 224], [224, 225, 222], [84, 106, 62]];
+    const colorAt = (stops, t) => { const i = Math.min(stops.length - 2, Math.floor(t)); return lerpColor(stops[i], stops[i + 1], smooth(0, 1, t - i)); };
+    const last = { ground: "", minutes: -1, bmo: -1, bm: null };
+
+    function applyStage(t) {
+      const out = (a, b) => 1 - smooth(a, b, t);
+      setOpacity(L_sketch, out(0.5, 1.0));
+      setOpacity(L_construct, out(0.35, 1.0));
+      setOpacity(L_mass, smooth(0.12, 0.8, t) * out(1.2, 1.7));
+      setOpacity(L_massEdges, smooth(0.7, 0.95, t) * out(1.15, 1.6));
+      setOpacity(L_plinthWhite, smooth(0.12, 0.6, t) * out(2.2, 2.75));
+      setOpacity(L_archWhite, smooth(1.15, 1.65, t) * out(2.2, 2.75));
+      setOpacity(L_roofWhite, smooth(1.15, 1.5, t) * out(1.55, 1.95));      // lifted off to reveal the fit-out
+      setOpacity(L_glassWhite, smooth(1.3, 1.8, t) * out(2.2, 2.75));
+      setOpacity(L_furnWhite, smooth(1.45, 1.95, t) * out(2.2, 2.75));
+      setOpacity(L_treesWhite, smooth(1.5, 2.0, t) * out(2.2, 2.75));
+      setOpacity(L_archFin, smooth(2.2, 2.75, t));
+      setOpacity(L_furnFin, smooth(2.2, 2.75, t));
+      setOpacity(L_glassFin, smooth(2.25, 2.8, t));
+      setOpacity(L_roofFin, smooth(2.45, 2.9, t));
+      setOpacity(L_site, smooth(2.15, 2.7, t));
+      setOpacity(L_roads, smooth(2.25, 2.8, t));
+      setOpacity(L_paths, smooth(2.35, 2.85, t));
+      setOpacity(L_cars, smooth(2.5, 2.95, t));
+      setOpacity(L_treesFin, realTrees.ready ? 0 : smooth(2.3, 2.8, t));
+      setOpacity(L_treesReal, realTrees.ready ? smooth(2.3, 2.8, t) : 0);
+      setOpacity(L_lights, smooth(2.55, 3.0, t));
+
+      // massing rises out of the terrace
+      const rise = Math.round((0.03 + 0.97 * smooth(0.12, 0.95, t)) * 200) / 200;
+      if (L_mass.visible) setTransform(massGraphic, "m", [0, 0, 0], [1, 1, rise]);
+      // furniture drops into place
+      const drop = Math.round((1 - smooth(1.45, 2.0, t)) * 2.2 * 100) / 100;
+      if (L_furnWhite.visible) setTransform(furnWhiteGraphic, "f", [0, 0, drop], [1, 1, 1]);
+      // trees grow from the ground, staggered by batch
+      const grow = (gs, a, b, min) => gs.forEach(g => {
+        const s = Math.round((min + (1 - min) * smooth(a + g.delay, b + g.delay, t)) * 100) / 100;
+        setTransform(g, "t", [0, 0, 0], [1, 1, s]);
+      });
+      if (L_treesWhite.visible) grow(treeWhiteGraphics, 1.45, 1.75, 0.05);
+      if (L_treesFin.visible) grow(treeFinGraphics, 2.2, 2.5, 0.2);
+
+      // satellite context: faint under the drawing and models, stronger around the finished estate
+      const bmo = Math.round((t < 2 ? 0.14 : lerp(0.14, 0.9, smooth(2.1, 2.8, t))) * 200) / 200;
+      const bm = map.basemap;
+      if (bm && (bm !== last.bm || bmo !== last.bmo)) {
+        bm.baseLayers.forEach(l => { l.opacity = bmo; });
+        bm.referenceLayers.forEach(l => { l.opacity = bmo; });
+        last.bm = bm; last.bmo = bmo;
+      }
+      const gr = colorAt(GROUND, t);
+      if (gr.join() !== last.ground) { map.ground.surfaceColor = gr; last.ground = gr.join(); }
+      const d = sunDate(t);
+      if (d.getTime() !== last.minutes) { view.environment.lighting.date = d; last.minutes = d.getTime(); }
+    }
+
+    // ------------------------------------------------------------------
+    // UI
+    // ------------------------------------------------------------------
+    const LAST = 3;
+    const STAGES = [
+      ["Sketch", "Pencil linework sets out Sir Arnold Thornely's plan: a 365-foot classical block on a raised terrace, a central portico, light courts, and the avenue climbing to the front."],
+      ["Massing", "Solid white volumes rise from the terrace: two ranges wrapped around light courts, the taller central block and the portico with its pediment."],
+      ["Detail", "Roof lifted away: sash windows and glazing, floor plates, offices fitted with desks, the Great Hall's chandelier and stair, and the chamber's horseshoe of benches."],
+      ["Finish", "Portland stone over a Mourne granite plinth, lead roofs and lit offices, set among lawns, the tree-lined avenue, car parks and lamps under a low September sun."]
+    ];
+    const $ = (id) => document.getElementById(id);
+    const range = $("range"), thumb = $("thumb"), fill = $("fill"), ticks = [...document.querySelectorAll(".tick")];
+    const stageBtns = [...document.querySelectorAll("#stages button")];
+    let current = 0, target = 0, shownStage = -1, scrubbing = false;
+
+    const caption = $("caption"), captionToggle = $("captionToggle");
+    captionToggle.addEventListener("click", () => {
+      const expanded = captionToggle.getAttribute("aria-expanded") === "true";
+      caption.classList.toggle("collapsed", expanded);
+      captionToggle.setAttribute("aria-expanded", String(!expanded));
+      captionToggle.setAttribute("aria-label", expanded ? "Expand stage information" : "Collapse stage information");
+      captionToggle.title = captionToggle.getAttribute("aria-label");
+    });
+    if (window.innerWidth < 720) captionToggle.click();
+
+    function updateUI(t) {
+      const pct = (t / LAST) * 100;
+      thumb.style.left = pct + "%"; fill.style.width = pct + "%";
+      if (!scrubbing) range.value = Math.round(t * 1000);
+      ticks.forEach((el, i) => el.classList.toggle("on", t >= i - 0.02));
+      const s = Math.min(LAST, Math.max(0, Math.round(t)));
+      if (s !== shownStage) {
+        shownStage = s;
+        stageBtns.forEach((b, i) => { b.classList.toggle("active", i === s); b.setAttribute("aria-selected", i === s); });
+        $("stageNum").textContent = String(s + 1).padStart(2, "0");
+        $("stageName").textContent = STAGES[s][0];
+        const desc = $("stageDesc");
+        desc.style.opacity = 0;
+        setTimeout(() => { desc.textContent = STAGES[shownStage][1]; desc.style.opacity = 1; }, 180);
+      }
+    }
+
+    range.addEventListener("pointerdown", () => { scrubbing = true; stopPlay(); });
+    window.addEventListener("pointerup", () => { scrubbing = false; });
+    range.addEventListener("input", () => { stopPlay(); target = range.value / 1000; });
+    range.addEventListener("change", () => { scrubbing = false; });
+    stageBtns.forEach(b => b.addEventListener("click", () => { stopPlay(); target = +b.dataset.stage; }));
+
+    let playing = false, holdUntil = 0;
+    const playBtn = $("play");
+    const PLAY_ICON = '<path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/>';
+    const PAUSE_ICON = '<rect x="6.5" y="5" width="4" height="14" rx="1"/><rect x="13.5" y="5" width="4" height="14" rx="1"/>';
+    function setPlay(on) {
+      playing = on; playBtn.setAttribute("aria-pressed", on); playBtn.setAttribute("aria-label", on ? "Pause" : "Play");
+      $("playIcon").innerHTML = on ? PAUSE_ICON : PLAY_ICON;
+      if (on) { if (current > LAST - 0.02) { target = 0; current = 0; } holdUntil = performance.now() + 400; }
+    }
+    function stopPlay() { if (playing) setPlay(false); }
+    playBtn.addEventListener("click", () => setPlay(!playing));
+
+    for (const id of ["navZoom", "navToggle", "navCompass"]) {
+      const el = $(id);
+      customElements.whenDefined(el.localName).then(() => { el.view = view; });
+    }
+    const orbitBtn = $("orbit");
+    function toggleAutoOrbit(on = !autoOrbit) { autoOrbit = on; orbitBtn.setAttribute("aria-pressed", on); if (on) orbit = orbitFromView(); }
+    orbitBtn.addEventListener("click", () => toggleAutoOrbit());
+    const resetView = () => { toggleAutoOrbit(false); flyTo(HOME, 3000); };
+    $("reset").addEventListener("click", resetView);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT" && e.key.startsWith("Arrow")) return;
+      if (/^[1-4]$/.test(e.key)) { stopPlay(); target = +e.key - 1; }
+      else if (e.key === " ") { e.preventDefault(); setPlay(!playing); }
+      else if (e.key === "]") { stopPlay(); target = Math.min(LAST, Math.floor(target + 1.001)); }
+      else if (e.key === "[") { stopPlay(); target = Math.max(0, Math.ceil(target - 1.001)); }
+      else if (e.key === "o") toggleAutoOrbit();
+      else if (e.key === "r") resetView();
+    });
+
+    // ------------------------------------------------------------------
+    // Frame loop
+    // ------------------------------------------------------------------
+    let prev = performance.now(), drawStart = 0, drawn = 1;
+    function frame(now) {
+      const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
+      if (playing && now > holdUntil && Math.abs(current - target) < 0.004) {
+        if (target >= LAST) setPlay(false);
+        else { target = Math.min(LAST, Math.floor(target + 1e-6) + 1); holdUntil = now + 5200; }
+      }
+      // exponential follow gives smooth morphs from clicks, keys and the slider
+      const k = scrubbing ? 14 : (playing ? 0.9 : 1.8);
+      current += (target - current) * (1 - Math.exp(-dt * k));
+      if (Math.abs(target - current) < 0.0005) current = target;
+      applyStage(current);
+      updateUI(current);
+
+      if (drawStart && drawn < sketchPaths.length) {                    // progressive sketch "drawing"
+        const n = Math.min(sketchPaths.length, Math.ceil(((now - drawStart) / 5200) * sketchPaths.length));
+        if (n !== drawn) { drawn = n; sketchGraphic.geometry = new Polyline({ paths: toMapPaths(sketchPaths.slice(0, n)), hasZ: true, spatialReference: SR }); }
+      }
+      if (autoOrbit && orbit) setCam({ ...orbit, heading: orbit.heading + dt * 4 });
+      requestAnimationFrame(frame);
+    }
+
+    // A known SceneView race when an edged layer flips between opaque and translucent rejects a
+    // promise with "no object" after the edges were already rebuilt; it has no visible effect.
+    window.addEventListener("unhandledrejection", (e) => { if (e.reason?.message === "no object") e.preventDefault(); });
+
+    window.stormont = { view, HOME, get stage() { return current; }, setStage: (s, instant) => { target = s; if (instant) current = s; }, orbit: (o) => setCam(o) };
+
+    try {
+      await view.when();
+      await Promise.race([
+        new Promise(res => { const poll = setInterval(() => { if (!view.updating) { clearInterval(poll); res(); } }, 200); }),
+        new Promise(res => setTimeout(res, 6000))
+      ]);
+      $("loader").classList.add("gone");
+      drawStart = performance.now();
+      loadRealisticTrees().catch(err => console.warn("Realistic trees unavailable", err));
+      flyTo(HOME, 5200);
+      requestAnimationFrame(frame);
+    } catch (err) {
+      console.error(err);
+      $("loader").classList.add("error");
+      $("loaderText").textContent = "The 3D view could not start (WebGL2 is required).";
+    }
+  </script>
+</body>
+</html>
