@@ -131,7 +131,7 @@
     <div id="captionDetails">
       <div class="stage-row"><div id="stageNum">01</div><div id="stageName">Sketch</div></div>
       <p id="stageDesc"></p>
-      <p id="controlsHelp"><b>Drag</b> orbit · <b>Right-drag</b> pan · <b>Scroll</b> zoom<br><b>1–4</b> stages · <b>Space</b> play · <b>O</b> auto-orbit · <b>R</b> reset</p>
+      <p id="controlsHelp"><b>Drag</b> orbit · <b>Right-drag</b> pan · <b>Scroll</b> zoom<br><b>1–4</b> stages · <b>Space</b> play · <b>O</b> auto-orbit · <b>R</b> reset · <b>E</b> export OBJ</p>
       <div class="coords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>54.6050° N, 5.8319° W · schematic model</div>
     </div>
   </section>
@@ -168,6 +168,9 @@
     <div class="tools">
       <button id="orbit" class="btn" aria-pressed="false" title="Auto-orbit (O)" aria-label="Auto-orbit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 4 0 1 1-4.5-3.46"/><path d="M17 5.5l-.5 3 3 .5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
+      </button>
+      <button id="export" class="btn" title="Download the finished model as OBJ (E)" aria-label="Download model as OBJ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg>
       </button>
       <button id="reset" class="btn" title="Reset view (R)" aria-label="Reset view">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66"/><path d="M4 4v4h4"/></svg>
@@ -1296,6 +1299,102 @@
     const orbitBtn = $("orbit");
     function toggleAutoOrbit(on = !autoOrbit) { autoOrbit = on; orbitBtn.setAttribute("aria-pressed", on); if (on) orbit = orbitFromView(); }
     orbitBtn.addEventListener("click", () => toggleAutoOrbit());
+    // ------------------------------------------------------------------
+    // OBJ export: the finished model (building, interiors, terrace, trees,
+    // cars, lamps, statue) as one ZIP holding stormont.obj, stormont.mtl and
+    // the procedural textures. Metres, Y up, origin at the building centre on
+    // the ground, +X east and -Z north. Draped ground surfaces are not included.
+    // ------------------------------------------------------------------
+    function buildOBJ() {
+      const parts = [["building", archFin], ["roof", roofFin], ["terrace", plinthFin], ["glazing", glassFin], ["interiors", furnFin],
+        ["lighting", lights], ["statue", statue], ["cars", carGroups], ...treeFin.map((g, i) => ["trees_" + (i + 1), g])];
+      const f3 = (v) => (Math.round(v * 1000) / 1000).toString();
+      const obj = ["# Parliament Buildings, Stormont (schematic model)\n# Units: metres. Y up; +X east, -Z north; origin at the building centre on the ground.\nmtllib stormont.mtl\n"];
+      const used = new Set();
+      let base = 1;
+      for (const [name, grp] of parts) {
+        obj.push(`o ${name}\n`);
+        for (const [key, g] of Object.entries(grp.g)) {
+          if (!g.f.length) continue;
+          used.add(key);
+          const L = [];
+          for (let i = 0; i < g.p.length; i += 3) L.push(`v ${f3(g.p[i])} ${f3(g.p[i + 2])} ${f3(-g.p[i + 1])}`);
+          for (let i = 0; i < g.uv.length; i += 2) L.push(`vt ${f3(g.uv[i])} ${f3(g.uv[i + 1])}`);
+          for (let i = 0; i < g.n.length; i += 3) L.push(`vn ${f3(g.n[i])} ${f3(g.n[i + 2])} ${f3(-g.n[i + 1])}`);
+          L.push(`g ${name}_${key}`, `usemtl ${key}`);
+          for (let i = 0; i < g.f.length; i += 3) {
+            const a = g.f[i] + base, b = g.f[i + 1] + base, c = g.f[i + 2] + base;
+            L.push(`f ${a}/${a}/${a} ${b}/${b}/${b} ${c}/${c}/${c}`);
+          }
+          base += g.count;
+          obj.push(L.join("\n") + "\n");
+        }
+      }
+      const files = [], mtl = ["# Materials for stormont.obj\n"];
+      for (const key of used) {
+        const m = M[key][0], tex = m.colorTexture?.data;
+        let rgb = m.color ? [m.color.r, m.color.g, m.color.b] : [200, 200, 200], alpha = m.color ? m.color.a : 1;
+        if (tex) {                                                  // average texture colour for viewers without textures
+          const d = tex.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, tex.width, tex.height).data, sum = [0, 0, 0];
+          for (let i = 0; i < d.length; i += 4) { sum[0] += d[i]; sum[1] += d[i + 1]; sum[2] += d[i + 2]; }
+          rgb = sum.map(v => v / (d.length / 4));
+        }
+        const c = (v) => (v / 255).toFixed(4);
+        mtl.push(`newmtl ${key}`, `Kd ${rgb.map(c).join(" ")}`, `Ka 0 0 0`, `Ks ${m.metallic > 0.4 ? "0.5 0.5 0.5" : "0.05 0.05 0.05"}`, `Ns ${Math.round((1 - m.roughness) * 200 + 10)}`);
+        if (alpha < 1) mtl.push(`d ${alpha.toFixed(2)}`, `Tr ${(1 - alpha).toFixed(2)}`);
+        if (m.emissiveColor) mtl.push(`Ke ${[m.emissiveColor.r, m.emissiveColor.g, m.emissiveColor.b].map(c).join(" ")}`);
+        if (tex) { mtl.push(`map_Kd textures/${key}.png`); files.push({ name: `textures/${key}.png`, canvas: tex }); }
+        mtl.push("illum 2", "");
+      }
+      return { obj, mtl: mtl.join("\n"), files };
+    }
+    // Minimal store-only ZIP writer (no compression library needed)
+    const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+    const crc32 = (u8) => { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+    function zip(entries) {
+      const enc = new TextEncoder(), chunks = [], central = [], now = new Date();
+      const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+      const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+      let offset = 0;
+      for (const { name, data } of entries) {
+        const nm = enc.encode(name), crc = crc32(data);
+        const h = new DataView(new ArrayBuffer(30));
+        h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(10, dosTime, true); h.setUint16(12, dosDate, true); h.setUint32(14, crc, true);
+        h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true);
+        chunks.push(h, nm, data);
+        const c = new DataView(new ArrayBuffer(46));
+        c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(12, dosTime, true); c.setUint16(14, dosDate, true); c.setUint32(16, crc, true);
+        c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, offset, true);
+        central.push(c, nm);
+        offset += 30 + nm.length + data.length;
+      }
+      const size = central.reduce((s, x) => s + x.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+      e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true);
+      e.setUint32(12, size, true); e.setUint32(16, offset, true);
+      return new Blob([...chunks, ...central, e], { type: "application/zip" });
+    }
+    const concatBytes = (parts) => { const enc = new TextEncoder(), arrs = parts.map(p => enc.encode(p)), out = new Uint8Array(arrs.reduce((s, a) => s + a.length, 0)); let o = 0; for (const a of arrs) { out.set(a, o); o += a.length; } return out; };
+    const canvasBytes = (cv) => new Promise(res => cv.toBlob(b => b.arrayBuffer().then(buf => res(new Uint8Array(buf))), "image/png"));
+    async function buildModelZip() {
+      const { obj, mtl, files } = buildOBJ();
+      const readme = "Parliament Buildings, Stormont - schematic model exported from the ArcGIS scene.\n\nstormont.obj  geometry (metres, Y up, +X east, -Z north, origin at the building centre on the ground)\nstormont.mtl  materials; textures/ holds the tiling stone, granite, lead, oak, carpet and marble maps\n\nObjects: building, roof, terrace, glazing, interiors, lighting, statue, cars, trees_1..6.\nGround surfaces (lawns, roads, paving) are draped in the web scene and are not included.\n";
+      const entries = [{ name: "stormont.obj", data: concatBytes(obj) }, { name: "stormont.mtl", data: concatBytes([mtl]) }, { name: "README.txt", data: concatBytes([readme]) }];
+      for (const f of files) entries.push({ name: f.name, data: await canvasBytes(f.canvas) });
+      return zip(entries);
+    }
+    const exportBtn = document.getElementById("export");
+    async function exportModel() {
+      if (exportBtn.disabled) return;
+      exportBtn.disabled = true; exportBtn.style.opacity = 0.5;
+      try {
+        const blob = await buildModelZip(), a = document.createElement("a");
+        a.href = URL.createObjectURL(blob); a.download = "stormont-obj.zip";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      } catch (err) { console.error("OBJ export failed", err); }
+      exportBtn.disabled = false; exportBtn.style.opacity = "";
+    }
+    exportBtn.addEventListener("click", exportModel);
     const resetView = () => { toggleAutoOrbit(false); flyTo(HOME, 3000); };
     $("reset").addEventListener("click", resetView);
 
@@ -1307,6 +1406,7 @@
       else if (e.key === "[") { stopPlay(); target = Math.max(0, Math.ceil(target - 1.001)); }
       else if (e.key === "o") toggleAutoOrbit();
       else if (e.key === "r") resetView();
+      else if (e.key === "e") exportModel();
     });
 
     // ------------------------------------------------------------------
